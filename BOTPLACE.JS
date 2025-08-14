@@ -501,29 +501,25 @@
 
         updateUI("autoRefreshStarting", "default");
         
-        // Kiểm tra xem có đang trong paint mode không
-        const existingPaintBtn = document.querySelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl');
-        if (!existingPaintBtn) {
-          console.log("🔍 Not in paint mode, looking for Paint button...");
-          const mainPaintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn-primary.sm\\:btn-xl');
-          if (!mainPaintBtn) {
-            console.error("❌ Cannot find Paint button");
-            return false;
-          }
-          console.log("✅ Found Paint button, clicking...");
-          mainPaintBtn.click();
-          await Utils.sleep(500);
-        } else {
-          console.log("✅ Already in paint mode");
+        // Bước 1: Luôn click Paint button để mở bảng màu (giống DemoWplace.js)
+        console.log("🔍 Looking for Paint button to open color palette...");
+        const mainPaintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl');
+        if (!mainPaintBtn) {
+          console.error("❌ Cannot find Paint button");
+          return false;
         }
+        
+        console.log("✅ Found Paint button, clicking to open color palette...");
+        mainPaintBtn.click();
+        await Utils.sleep(500);
         
         updateUI("selectingTransparent", "default");
         
-        // Bước 2: Chọn màu transparent (color-0) - giống DemoWplace.js
-        console.log("🔍 Looking for transparent color button...");
-        const transBtn = await Utils.waitForSelector('button#color-0');
+        // Bước 2: Đợi bảng màu hiện lên và chọn màu transparent (color-0)
+        console.log("🔍 Waiting for color palette to appear and looking for transparent button...");
+        const transBtn = await Utils.waitForSelector('button#color-0', 200, 5000);
         if (!transBtn) {
-          console.error("❌ Cannot find transparent color button");
+          console.error("❌ Cannot find transparent color button - color palette may not have loaded");
           return false;
         }
         
@@ -1359,6 +1355,36 @@
       statusText.style.animation = "slideIn 0.3s ease-out";
     };
 
+    window.checkRequirements = () => {
+      const requirements = {
+        initBot: state.colorsChecked,
+        uploadImage: state.imageLoaded,
+        selectPosition: !!(state.startPosition && state.region),
+        captchaToken: !!capturedCaptchaToken
+      };
+      
+      // Update button states based on requirements
+      const startBtn = document.querySelector("#startBtn");
+      if (startBtn) {
+        const canStart = requirements.uploadImage && requirements.selectPosition && 
+                        (requirements.captchaToken || state.autoRefresh);
+        startBtn.disabled = !canStart;
+        
+        if (!canStart) {
+          let missing = [];
+          if (!requirements.uploadImage) missing.push("Upload Image");
+          if (!requirements.selectPosition) missing.push("Select Position");
+          if (!requirements.captchaToken && !state.autoRefresh) missing.push("CAPTCHA Token");
+          
+          startBtn.title = `Missing: ${missing.join(", ")}`;
+        } else {
+          startBtn.title = "Ready to start painting!";
+        }
+      }
+      
+      return requirements;
+    };
+
     window.updateStats = async () => {
       if (!state.colorsChecked || !state.imageLoaded) return;
 
@@ -1522,6 +1548,7 @@
           count: state.availableColors.length,
         });
         updateStats();
+        checkRequirements(); // Check requirements after colors found
       } catch {
         updateUI("imageError", "error");
       }
@@ -1576,6 +1603,7 @@
         }
 
         updateStats();
+        checkRequirements(); // Check requirements after image loaded
         updateUI("imageLoaded", "success", { count: totalValidPixels });
       } catch {
         updateUI("imageError", "error");
@@ -1635,6 +1663,7 @@
 
                 window.fetch = originalFetch;
                 state.selectingPosition = false;
+                checkRequirements(); // Check requirements after position set
                 updateUI("positionSet", "success");
               }
             }
@@ -1658,15 +1687,62 @@
     });
 
     startBtn.addEventListener("click", async () => {
+      // Debug logging để kiểm tra trạng thái
+      console.log("🔍 Start button clicked - checking requirements:");
+      console.log("  - imageLoaded:", state.imageLoaded);
+      console.log("  - startPosition:", state.startPosition);
+      console.log("  - region:", state.region);
+      console.log("  - capturedCaptchaToken:", !!capturedCaptchaToken);
+      
       if (!state.imageLoaded || !state.startPosition || !state.region) {
+        console.log("❌ Missing requirements for starting");
+        
+        // Hiển thị hướng dẫn cụ thể
+        let missingItems = [];
+        if (!state.imageLoaded) missingItems.push("Upload Image");
+        if (!state.startPosition || !state.region) missingItems.push("Select Position");
+        
+        const message = state.language === "pt" 
+          ? `❌ Thiếu: ${missingItems.join(", ")}. Hoàn thành các bước trước khi Start!`
+          : `❌ Missing: ${missingItems.join(", ")}. Complete these steps before Start!`;
+        
         updateUI("missingRequirements", "error");
+        Utils.showAlert(message, "error");
         return;
       }
       if (!capturedCaptchaToken) {
-        updateUI("captchaNeeded", "error");
-        Utils.showAlert(Utils.t("captchaNeeded"), "error");
-        return;
+        console.log("❌ Missing CAPTCHA token");
+        
+        if (state.autoRefresh) {
+          console.log("🔄 Auto-Refresh enabled, attempting to get CAPTCHA token...");
+          updateUI("autoRefreshStarting", "default");
+          
+          const refreshSuccess = await Utils.autoRefreshCaptcha();
+          if (refreshSuccess && capturedCaptchaToken) {
+            console.log("✅ CAPTCHA token obtained via auto-refresh");
+            updateUI("autoRefreshComplete", "success");
+            Utils.showAlert(Utils.t("autoRefreshComplete"), "success");
+            // Continue with starting the bot
+          } else {
+            const message = state.language === "pt" 
+              ? "❌ Auto-refresh thất bại. Hãy click một pixel thủ công để lấy token!"
+              : "❌ Auto-refresh failed. Please click a pixel manually to get token!";
+            updateUI("autoRefreshFailed", "error");
+            Utils.showAlert(message, "error");
+            return;
+          }
+        } else {
+          const message = state.language === "pt" 
+            ? "❌ Cần CAPTCHA token. Hãy click một pixel bất kỳ trên canvas để lấy token, hoặc bật Auto-Refresh để tự động lấy!"
+            : "❌ CAPTCHA token needed. Click any pixel on canvas to get token, or enable Auto-Refresh for automatic capture!";
+          
+          updateUI("captchaNeeded", "error");
+          Utils.showAlert(message, "error");
+          return;
+        }
       }
+      
+      console.log("✅ All requirements met, starting bot...");
 
       state.running = true;
       state.stopFlag = false;
@@ -1828,6 +1904,7 @@
     autoRefreshCheckbox.addEventListener("change", () => {
       state.autoRefresh = autoRefreshCheckbox.checked;
       console.log(`Auto-refresh CAPTCHA ${state.autoRefresh ? 'enabled' : 'disabled'}`);
+      checkRequirements(); // Check requirements after auto-refresh toggle
     });
     
     // Check for saved progress on startup
@@ -1848,7 +1925,10 @@
     };
     
     // Check for saved progress after a short delay to let UI settle
-    setTimeout(checkSavedProgress, 1000);
+    setTimeout(() => {
+      checkSavedProgress();
+      checkRequirements(); // Initial requirements check
+    }, 1000);
   }
 
   async function processImage() {
