@@ -608,7 +608,7 @@
       // THÊM: Detect IP và Profile ID
       detectNetworkInfo: async () => {
         try {
-          // Detect IP address
+          // Detect IP address - sử dụng ipify.org thay vì ipapi.co (tránh lỗi 429)
           const ipResponse = await fetch('https://api.ipify.org?format=json');
           const ipData = await ipResponse.json();
           state.ipAddress = ipData.ip;
@@ -620,8 +620,16 @@
           return true;
         } catch (error) {
           console.error('❌ Error detecting network info:', error);
-          state.ipAddress = 'unknown';
-          state.profileId = `profile_${Date.now()}`;
+          // Fallback IP detection
+          try {
+            const fallbackResponse = await fetch('https://httpbin.org/ip');
+            const fallbackData = await fallbackResponse.json();
+            state.ipAddress = fallbackData.origin;
+          } catch (fallbackError) {
+            state.ipAddress = 'unknown';
+          }
+          state.profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          console.log(`🌐 Fallback network info: IP=${state.ipAddress}, Profile=${state.profileId}`);
           return false;
         }
       },
@@ -1462,6 +1470,10 @@
               <i class="fas fa-folder-open"></i>
               <span>${Utils.t("loadSlot")}</span>
             </button>
+            <button id="loadSyncBtn" class="wplace-btn wplace-btn-primary">
+              <i class="fas fa-sync"></i>
+              <span>Load Sync</span>
+            </button>
           </div>
           
           <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
@@ -1587,6 +1599,7 @@
       const importBtn = container.querySelector("#importBtn");
       const saveSlotBtn = container.querySelector("#saveSlotBtn");
       const loadSlotBtn = container.querySelector("#loadSlotBtn");
+      const loadSyncBtn = container.querySelector("#loadSyncBtn");
       const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
       const currentSlotSelect = container.querySelector("#currentSlotSelect");
       const minimizeBtn = container.querySelector("#minimizeBtn");
@@ -2217,6 +2230,62 @@
           }
         } else if (slotNumber !== null) {
           Utils.showAlert("❌ Invalid slot number. Please select 1-5", "error");
+        }
+      });
+
+      // THÊM: Load Sync Button Event Listener
+      loadSyncBtn.addEventListener("click", async () => {
+        try {
+          console.log('🔄 Manual sync triggered...');
+          
+          // Check if we have network info
+          if (!state.ipAddress || state.ipAddress === 'unknown') {
+            await Utils.detectNetworkInfo();
+          }
+          
+          // Force check for sync data from server
+          if (state.autoSync && state.imageLoaded) {
+            console.log('🔍 Checking for sync data from server...');
+            const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
+            
+            if (response.ok) {
+              const syncData = await response.json();
+              if (syncData && syncData.length > 0) {
+                console.log(`📥 Found ${syncData.length} sync entries from manual check`);
+                
+                // Tìm profile có progress cao nhất
+                let highestProgress = 0;
+                let bestSyncData = null;
+                
+                syncData.forEach(data => {
+                  if (data.progress && data.progress.paintedPixels > highestProgress) {
+                    highestProgress = data.progress.paintedPixels;
+                    bestSyncData = data;
+                  }
+                });
+                
+                // Sync với profile có progress cao nhất
+                if (bestSyncData && highestProgress > state.paintedPixels) {
+                  console.log(`🏆 Found profile with higher progress: ${bestSyncData.profileId} (${highestProgress} > ${state.paintedPixels})`);
+                  Utils.processSyncData(bestSyncData);
+                  Utils.showAlert(`🔄 Synced ${highestProgress} pixels from ${bestSyncData.profileId}`, "success");
+                } else if (bestSyncData && highestProgress === state.paintedPixels) {
+                  Utils.showAlert(`⚖️ All profiles have same progress: ${highestProgress} pixels`, "info");
+                } else {
+                  Utils.showAlert(`📤 This profile has highest progress: ${state.paintedPixels} pixels`, "info");
+                }
+              } else {
+                Utils.showAlert('📭 No sync data found from other profiles', "warning");
+              }
+            } else {
+              Utils.showAlert('❌ Failed to check sync data from server', "error");
+            }
+          } else {
+            Utils.showAlert('❌ Auto-sync must be enabled and image must be loaded', "error");
+          }
+        } catch (error) {
+          console.error('❌ Manual sync error:', error);
+          Utils.showAlert('❌ Manual sync failed: ' + error.message, "error");
         }
       });
 

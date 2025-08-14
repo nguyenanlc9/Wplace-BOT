@@ -8,13 +8,25 @@ const PORT = 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Tăng limit để handle large paintedMap data
 app.use(express.static('public'));
 
 // In-memory storage for sync data (in production, use a database)
 let syncData = {};
 
 // API Routes
+app.get('/sync', (req, res) => {
+  res.status(405).json({ 
+    error: 'Method not allowed', 
+    message: 'Use POST /sync to send sync data, GET /poll to receive sync data',
+    endpoints: {
+      'POST /sync': 'Send progress data to server',
+      'GET /poll': 'Receive progress data from other profiles',
+      'GET /status': 'Get server status'
+    }
+  });
+});
+
 app.post('/sync', (req, res) => {
   try {
     const { ipAddress, profileId, sourceSlot, progress, apiKey } = req.body;
