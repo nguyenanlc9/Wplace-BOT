@@ -328,6 +328,7 @@
           const selectPosBtn = document.querySelector("#selectPosBtn");
           const startBtn = document.querySelector("#startBtn");
           const saveBtn = document.querySelector("#saveBtn");
+          const exportPixelBtn = document.querySelector("#exportPixelBtn");
           const progressBar = document.querySelector("#progressBar");
           
           // Show/hide appropriate buttons based on state
@@ -343,6 +344,7 @@
           
           resizeBtn.disabled = false;
           saveBtn.disabled = false;
+          if (exportPixelBtn) exportPixelBtn.disabled = false;
           
           if (state.startPosition && state.region) {
             selectPosBtn.disabled = false;
@@ -1583,6 +1585,7 @@
           Utils.showAlert(Utils.t("dataLoaded"), "success");
           
           // Enable appropriate buttons
+          saveBtn.disabled = false;
           exportPixelBtn.disabled = false;  // Enable Export Pixels button
           
           // Show init button if colors not checked yet
