@@ -74,6 +74,8 @@
       autoRefreshStarting: "🔄 Iniciando auto-refresh CAPTCHA...",
       autoRefreshComplete: "✅ Auto-refresh CAPTCHA concluído com sucesso!",
       autoRefreshFailed: "❌ Falha no auto-refresh CAPTCHA",
+      selectingTransparent: "Selecionando transparente...",
+      confirmingPaint: "Confirmando pintura...",
     },
     en: {
       title: "WPlace Auto-Image",
@@ -129,6 +131,8 @@
       autoRefreshStarting: "🔄 Starting auto-refresh CAPTCHA...",
       autoRefreshComplete: "✅ Auto-refresh CAPTCHA completed successfully!",
       autoRefreshFailed: "❌ Auto-refresh CAPTCHA failed",
+      selectingTransparent: "Selecting transparent...",
+      confirmingPaint: "Confirming paint...",
     },
   };
 
@@ -475,12 +479,12 @@
       return text;
     },
 
-    // Auto-refresh CAPTCHA thông minh
+    // Auto-refresh CAPTCHA thông minh (sao chép từ DemoWplace.js)
     autoRefreshCaptcha: async () => {
       try {
         console.log("🔄 Starting auto-refresh CAPTCHA process...");
         
-        // Đợi có đủ charges trước khi refresh
+        // Đợi có đủ charges trước khi refresh (giống DemoWplace.js)
         let chargeInfo = await WPlaceService.getCharges();
         if (chargeInfo.charges < 2) {
           updateUI("waitingCharges", "warning", { 
@@ -488,7 +492,7 @@
           });
           
           while (chargeInfo.charges < 2) {
-            await Utils.sleep(30000); // Đợi 30s
+            await Utils.sleep(60000); // Đợi 60s như DemoWplace.js
             chargeInfo = await WPlaceService.getCharges();
             state.currentCharges = chargeInfo.charges;
             updateStats();
@@ -497,46 +501,42 @@
 
         updateUI("autoRefreshStarting", "default");
         
-        // Bước 1: Tìm và click nút Paint
-        const mainPaintBtn = await Utils.waitForSelector(
-          'button.btn.btn-primary.btn-lg, button.btn-primary.sm\\:btn-xl, button[class*="btn-primary"]',
-          200, 10000
-        );
-        
+        // Bước 1: Tìm và click nút Paint (selector giống DemoWplace.js)
+        const mainPaintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn-primary.sm\\:btn-xl');
         if (!mainPaintBtn) {
           console.error("❌ Cannot find Paint button");
           return false;
         }
         
         mainPaintBtn.click();
-        await Utils.sleep(800);
+        await Utils.sleep(500); // Timing giống DemoWplace.js
         
-        // Bước 2: Chọn màu transparent (color-0)
-        const transBtn = await Utils.waitForSelector('button#color-0', 200, 5000);
+        updateUI("selectingTransparent", "default");
+        
+        // Bước 2: Chọn màu transparent (color-0) - giống DemoWplace.js
+        const transBtn = await Utils.waitForSelector('button#color-0');
         if (!transBtn) {
           console.error("❌ Cannot find transparent color button");
           return false;
         }
         
         transBtn.click();
-        await Utils.sleep(800);
+        await Utils.sleep(500);
         
-        // Bước 3: Click vào canvas để trigger CAPTCHA
-        const canvas = await Utils.waitForSelector('canvas', 200, 5000);
+        // Bước 3: Click vào canvas - logic giống DemoWplace.js
+        const canvas = await Utils.waitForSelector('canvas');
         if (!canvas) {
           console.error("❌ Cannot find canvas");
           return false;
         }
         
-        // Setup canvas for interaction
+        // Setup canvas giống DemoWplace.js
         canvas.setAttribute('tabindex', '0');
         canvas.focus();
-        
         const rect = canvas.getBoundingClientRect();
         const centerX = Math.round(rect.left + rect.width / 2);
         const centerY = Math.round(rect.top + rect.height / 2);
         
-        // Simulate mouse move và space key press
         const moveEvt = new MouseEvent('mousemove', {
           clientX: centerX,
           clientY: centerY,
@@ -544,39 +544,30 @@
         });
         canvas.dispatchEvent(moveEvt);
         
-        await Utils.sleep(300);
-        
-        const keyDown = new KeyboardEvent('keydown', { 
-          key: ' ', 
-          code: 'Space', 
-          bubbles: true 
-        });
-        const keyUp = new KeyboardEvent('keyup', { 
-          key: ' ', 
-          code: 'Space', 
-          bubbles: true 
-        });
-        
+        // Key events giống DemoWplace.js
+        const keyDown = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true });
+        const keyUp = new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true });
         canvas.dispatchEvent(keyDown);
         canvas.dispatchEvent(keyUp);
         
-        await Utils.sleep(1000);
+        await Utils.sleep(500);
         
-        // Bước 4: Confirm paint
+        updateUI("confirmingPaint", "default");
+        
+        // Bước 4: Confirm paint - logic giống DemoWplace.js
         let confirmBtn = await Utils.waitForSelector(
-          'button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl',
-          200, 5000
+          'button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl'
         );
         
         if (!confirmBtn) {
-          // Fallback: tìm tất cả primary buttons
-          const allPrimary = Array.from(document.querySelectorAll('button.btn-primary, button[class*="btn-primary"]'));
+          // Fallback giống DemoWplace.js
+          const allPrimary = Array.from(document.querySelectorAll('button.btn-primary'));
           confirmBtn = allPrimary.length ? allPrimary[allPrimary.length - 1] : null;
         }
         
         if (confirmBtn) {
           confirmBtn.click();
-          await Utils.sleep(1500);
+          await Utils.sleep(1000); // Timing giống DemoWplace.js
           
           updateUI("autoRefreshComplete", "success");
           console.log("✅ Auto-refresh CAPTCHA completed successfully");
@@ -1912,6 +1903,8 @@
                   if (capturedCaptchaToken) {
                     updateUI("autoRefreshComplete", "success");
                     Utils.showAlert(Utils.t("autoRefreshComplete"), "success");
+                    // Reset pixel batch để bắt đầu lại
+                    pixelBatch = [];
                     continue; // Tiếp tục painting
                   }
                 }
