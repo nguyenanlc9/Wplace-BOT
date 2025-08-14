@@ -641,7 +641,7 @@
         console.log('👂 Sync listener started - will receive updates from other profiles (IP: ' + state.ipAddress + ')');
       },
 
-      // THÊM: Process sync data (common function)
+      // THÊM: Process sync data (common function) - ƯU TIÊN PROFILE CÓ PROGRESS CAO NHẤT
       processSyncData: (syncData) => {
         try {
           // Kiểm tra IP và slot
@@ -656,8 +656,10 @@
             if (state.imageLoaded && state.totalPixels === syncData.progress.totalPixels) {
               const oldPainted = state.paintedPixels;
               
-              // Merge progress (take the maximum painted pixels)
+              // LUÔN LUÔN sync nếu profile khác có progress cao hơn
               if (syncData.progress.paintedPixels > state.paintedPixels) {
+                console.log(`🔄 Profile ${syncData.profileId} has higher progress (${syncData.progress.paintedPixels} > ${state.paintedPixels}), syncing...`);
+                
                 state.paintedPixels = syncData.progress.paintedPixels;
                 state.lastPosition = syncData.progress.lastPosition;
                 
@@ -682,6 +684,19 @@
                 
                 // Auto-save the synced progress
                 Utils.autoSaveCurrentSlot();
+                
+                // Nếu đang paint, dừng lại để tránh conflict
+                if (state.running) {
+                  console.log(`⏸️ Stopping current painting to sync with ${syncData.profileId}`);
+                  state.running = false;
+                  updateUI();
+                }
+              } else if (syncData.progress.paintedPixels < state.paintedPixels) {
+                // Nếu profile này có progress cao hơn, gửi sync ngược lại
+                console.log(`📤 Profile ${state.profileId} has higher progress (${state.paintedPixels} > ${syncData.progress.paintedPixels}), sending sync back`);
+                Utils.syncToAllProfiles();
+              } else {
+                console.log(`⚖️ Both profiles have same progress (${state.paintedPixels}), no sync needed`);
               }
             }
           }
@@ -690,9 +705,9 @@
         }
       },
 
-      // THÊM: Network listener (polling method)
+      // THÊM: Network listener (polling method) - SYNC NGAY LẬP TỨC
       startNetworkListener: () => {
-        // Poll localhost server mỗi 10 giây để nhận sync từ profiles khác
+        // Poll localhost server mỗi 5 giây để nhận sync từ profiles khác (nhanh hơn)
         setInterval(async () => {
           if (state.autoSync && state.imageLoaded) {
             try {
@@ -700,6 +715,7 @@
               if (response.ok) {
                 const syncData = await response.json();
                 if (syncData && syncData.length > 0) {
+                  console.log(`📥 Received ${syncData.length} sync entries from server`);
                   syncData.forEach(data => Utils.processSyncData(data));
                 }
               }
@@ -708,25 +724,26 @@
               console.log('🌐 Localhost polling failed: ' + error.message);
             }
           }
-        }, 10000); // Poll every 10 seconds
+        }, 5000); // Poll every 5 seconds (nhanh hơn)
         
-        console.log('🌐 Localhost listener started - polling for updates from other profiles');
+        console.log('🌐 Localhost listener started - polling for updates from other profiles every 5s');
       },
 
-      // THÊM: Start real-time sync intervals
+      // THÊM: Start real-time sync intervals - SYNC LIÊN TỤC
       startAutoSync: () => {
         if (window.syncInterval) {
           clearInterval(window.syncInterval);
         }
         
         window.syncInterval = setInterval(() => {
-          if (state.autoSync && state.running) {
+          if (state.autoSync && state.imageLoaded) {
+            // Luôn luôn sync, không chỉ khi đang running
             Utils.autoSaveCurrentSlot();
             Utils.syncToAllProfiles();
           }
         }, state.syncInterval * 1000);
         
-        console.log(`🔄 Auto-sync started: saving every ${state.syncInterval}s`);
+        console.log(`🔄 Auto-sync started: syncing every ${state.syncInterval}s (always, not just when running)`);
       },
 
       // THÊM: Stop auto-sync
@@ -735,6 +752,41 @@
           clearInterval(window.syncInterval);
           window.syncInterval = null;
           console.log('⏹️ Auto-sync stopped');
+        }
+      },
+
+      // THÊM: Check initial sync khi khởi động
+      checkInitialSync: async () => {
+        if (!state.autoSync || !state.imageLoaded) return;
+        
+        try {
+          console.log('🔍 Checking for existing sync data on startup...');
+          const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
+          if (response.ok) {
+            const syncData = await response.json();
+            if (syncData && syncData.length > 0) {
+              console.log(`📥 Found ${syncData.length} existing sync entries on startup`);
+              
+              // Tìm profile có progress cao nhất
+              let highestProgress = 0;
+              let bestSyncData = null;
+              
+              syncData.forEach(data => {
+                if (data.progress && data.progress.paintedPixels > highestProgress) {
+                  highestProgress = data.progress.paintedPixels;
+                  bestSyncData = data;
+                }
+              });
+              
+              // Sync với profile có progress cao nhất
+              if (bestSyncData && highestProgress > state.paintedPixels) {
+                console.log(`🏆 Found profile with higher progress: ${bestSyncData.profileId} (${highestProgress} > ${state.paintedPixels})`);
+                Utils.processSyncData(bestSyncData);
+              }
+            }
+          }
+        } catch (error) {
+          console.log('🌐 Initial sync check failed: ' + error.message);
         }
       },
 
@@ -2223,6 +2275,8 @@
           Utils.startSyncListener();
           if (state.autoSync) {
             Utils.startAutoSync();
+            // Kiểm tra sync ngay lập tức khi khởi động
+            Utils.checkInitialSync();
           }
         });
       }, 1000);

@@ -66,11 +66,18 @@ app.get('/poll', (req, res) => {
     // Filter out data from the same profile and return only recent data
     const filteredData = data.filter(entry => 
       entry.profileId !== profile && 
-      Date.now() - entry.timestamp < 30000 // Only return data from last 30 seconds
+      Date.now() - entry.timestamp < 60000 // Return data from last 60 seconds (longer window)
     );
 
+    // Sắp xếp theo progress cao nhất trước
+    filteredData.sort((a, b) => {
+      const progressA = a.progress ? a.progress.paintedPixels : 0;
+      const progressB = b.progress ? b.progress.paintedPixels : 0;
+      return progressB - progressA; // Cao nhất trước
+    });
+
     if (filteredData.length > 0) {
-      console.log(`📤 Poll response for ${profile} (IP: ${ip}, Slot: ${slot}): ${filteredData.length} entries`);
+      console.log(`📤 Poll response for ${profile} (IP: ${ip}, Slot: ${slot}): ${filteredData.length} entries, highest progress: ${filteredData[0].progress?.paintedPixels || 0}`);
     }
 
     res.json(filteredData);
