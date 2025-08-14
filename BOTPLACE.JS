@@ -70,6 +70,17 @@
         progressImported: "✅ Progresso importado com sucesso!",
         invalidProgressFile: "❌ Arquivo de progresso inválido",
         noProgressFileSelected: "❌ Nenhum arquivo selecionado",
+        saveSlot: "Salvar Slot",
+        loadSlot: "Carregar Slot",
+        slotSaved: "✅ Salvo no slot {slot}!",
+        slotLoaded: "✅ Carregado do slot {slot}!",
+        slotEmpty: "❌ Slot {slot} está vazio",
+        selectSlot: "Selecionar Slot (1-5):",
+        autoSync: "Auto-Sync",
+        autoSyncEnabled: "✅ Auto-sync habilitado",
+        autoSyncDisabled: "❌ Auto-sync desabilitado",
+        syncInterval: "Sincronizar a cada {seconds}s",
+        realTimeSave: "Salvamento em Tempo Real",
         autoRefreshStarting: "🔄 Iniciando auto-refresh CAPTCHA...",
         autoRefreshComplete: "✅ Auto-refresh CAPTCHA concluído com sucesso!",
         autoRefreshFailed: "❌ Auto-refresh CAPTCHA falhou",
@@ -124,6 +135,17 @@
         progressImported: "✅ Progress imported successfully!",
         invalidProgressFile: "❌ Invalid progress file",
         noProgressFileSelected: "❌ No file selected",
+        saveSlot: "Save Slot",
+        loadSlot: "Load Slot",
+        slotSaved: "✅ Saved to slot {slot}!",
+        slotLoaded: "✅ Loaded from slot {slot}!",
+        slotEmpty: "❌ Slot {slot} is empty",
+        selectSlot: "Select Slot (1-5):",
+        autoSync: "Auto-Sync",
+        autoSyncEnabled: "✅ Auto-sync enabled",
+        autoSyncDisabled: "❌ Auto-sync disabled", 
+        syncInterval: "Sync every {seconds}s",
+        realTimeSave: "Real-time Save",
         autoRefreshStarting: "🔄 Starting auto-refresh CAPTCHA...",
         autoRefreshComplete: "✅ Auto-refresh CAPTCHA completed successfully!",
         autoRefreshFailed: "❌ Auto-refresh CAPTCHA failed",
@@ -151,6 +173,9 @@
     estimatedTime: 0,
     language: "en",
     lastAutoRefresh: 0, // THÊM: Timestamp của lần auto-refresh cuối
+    autoSync: true, // THÊM: Auto-sync enabled
+    syncInterval: 5, // THÊM: Sync every 5 seconds
+    currentSlot: 1, // THÊM: Current active slot
   };
   
     // Global variable to store the captured CAPTCHA token.
@@ -352,6 +377,7 @@
             resizeBtn.disabled = false;
             saveBtn.disabled = false;
             if (exportBtn) exportBtn.disabled = false;
+            if (saveSlotBtn) saveSlotBtn.disabled = false;
             
             if (state.startPosition && state.region) {
               selectPosBtn.disabled = false;
@@ -402,6 +428,224 @@
   
       hasSavedProgress: () => {
         return localStorage.getItem('wplace-auto-image-progress') !== null;
+      },
+
+      // THÊM: Save to specific slot (1-5)
+      saveToSlot: (slotNumber) => {
+        try {
+          if (slotNumber < 1 || slotNumber > 5) {
+            console.error('❌ Invalid slot number. Must be 1-5');
+            return false;
+          }
+          
+          const progressData = {
+            version: "1.0",
+            timestamp: Date.now(),
+            slotNumber: slotNumber,
+            state: {
+              imageLoaded: state.imageLoaded,
+              totalPixels: state.totalPixels,
+              paintedPixels: state.paintedPixels,
+              lastPosition: state.lastPosition,
+              startPosition: state.startPosition,
+              region: state.region,
+              paintedMap: state.paintedMap,
+              imageData: state.imageData,
+              availableColors: state.availableColors,
+              colorsChecked: state.colorsChecked,
+              language: state.language,
+              lastAutoRefresh: state.lastAutoRefresh
+            }
+          };
+          
+          const slotKey = `wplace-slot-${slotNumber}`;
+          localStorage.setItem(slotKey, JSON.stringify(progressData));
+          console.log(`✅ Progress saved to slot ${slotNumber}`);
+          return true;
+        } catch (error) {
+          console.error(`❌ Error saving to slot ${slotNumber}:`, error);
+          return false;
+        }
+      },
+
+      // THÊM: Load from specific slot (1-5)
+      loadFromSlot: (slotNumber) => {
+        try {
+          if (slotNumber < 1 || slotNumber > 5) {
+            console.error('❌ Invalid slot number. Must be 1-5');
+            return null;
+          }
+          
+          const slotKey = `wplace-slot-${slotNumber}`;
+          const savedData = localStorage.getItem(slotKey);
+          if (!savedData) {
+            console.log(`❌ Slot ${slotNumber} is empty`);
+            return null;
+          }
+          
+          const progressData = JSON.parse(savedData);
+          
+          // Validate data structure
+          if (!progressData.version || !progressData.state) {
+            console.error(`❌ Invalid data in slot ${slotNumber}`);
+            return null;
+          }
+          
+          console.log(`✅ Loaded progress from slot ${slotNumber}`);
+          return progressData;
+        } catch (error) {
+          console.error(`❌ Error loading from slot ${slotNumber}:`, error);
+          return null;
+        }
+      },
+
+      // THÊM: Get slot info (for UI display)
+      getSlotInfo: (slotNumber) => {
+        try {
+          const slotKey = `wplace-slot-${slotNumber}`;
+          const savedData = localStorage.getItem(slotKey);
+          if (!savedData) {
+            return null;
+          }
+          
+          const progressData = JSON.parse(savedData);
+          return {
+            slotNumber: slotNumber,
+            timestamp: progressData.timestamp,
+            totalPixels: progressData.state?.totalPixels || 0,
+            paintedPixels: progressData.state?.paintedPixels || 0,
+            imageLoaded: progressData.state?.imageLoaded || false
+          };
+        } catch (error) {
+          return null;
+        }
+      },
+
+      // THÊM: Get all slots info
+      getAllSlotsInfo: () => {
+        const slotsInfo = [];
+        for (let i = 1; i <= 5; i++) {
+          const info = Utils.getSlotInfo(i);
+          slotsInfo.push(info);
+        }
+        return slotsInfo;
+      },
+
+      // THÊM: Real-time Auto Save (save current progress to current slot)
+      autoSaveCurrentSlot: () => {
+        if (state.imageLoaded && state.currentSlot >= 1 && state.currentSlot <= 5) {
+          const success = Utils.saveToSlot(state.currentSlot);
+          if (success) {
+            console.log(`🔄 Auto-saved to slot ${state.currentSlot} (${state.paintedPixels}/${state.totalPixels} pixels)`);
+          }
+          return success;
+        }
+        return false;
+      },
+
+      // THÊM: Sync progress to all other profiles/tabs
+      syncToAllProfiles: () => {
+        try {
+          // Broadcast current progress to other tabs/profiles
+          const syncData = {
+            type: 'wplace_sync',
+            timestamp: Date.now(),
+            sourceSlot: state.currentSlot,
+            progress: {
+              paintedPixels: state.paintedPixels,
+              totalPixels: state.totalPixels,
+              lastPosition: state.lastPosition,
+              paintedMap: state.paintedMap
+            }
+          };
+          
+          // Use localStorage events to sync between tabs
+          localStorage.setItem('wplace-sync-broadcast', JSON.stringify(syncData));
+          localStorage.removeItem('wplace-sync-broadcast'); // Trigger storage event
+          
+          console.log(`📡 Broadcasted progress: ${state.paintedPixels}/${state.totalPixels} pixels to other profiles`);
+          return true;
+        } catch (error) {
+          console.error('❌ Error syncing to other profiles:', error);
+          return false;
+        }
+      },
+
+      // THÊM: Listen for sync from other profiles
+      startSyncListener: () => {
+        window.addEventListener('storage', (e) => {
+          if (e.key === 'wplace-sync-broadcast' && e.newValue) {
+            try {
+              const syncData = JSON.parse(e.newValue);
+              
+              if (syncData.type === 'wplace_sync' && syncData.sourceSlot !== state.currentSlot) {
+                console.log(`📥 Received sync from slot ${syncData.sourceSlot}: ${syncData.progress.paintedPixels}/${syncData.progress.totalPixels} pixels`);
+                
+                // Update current progress if we're on the same project
+                if (state.imageLoaded && state.totalPixels === syncData.progress.totalPixels) {
+                  const oldPainted = state.paintedPixels;
+                  
+                  // Merge progress (take the maximum painted pixels)
+                  if (syncData.progress.paintedPixels > state.paintedPixels) {
+                    state.paintedPixels = syncData.progress.paintedPixels;
+                    state.lastPosition = syncData.progress.lastPosition;
+                    
+                    // Merge painted maps
+                    if (syncData.progress.paintedMap && state.paintedMap) {
+                      for (let y = 0; y < state.paintedMap.length; y++) {
+                        for (let x = 0; x < state.paintedMap[y].length; x++) {
+                          if (syncData.progress.paintedMap[y] && syncData.progress.paintedMap[y][x]) {
+                            state.paintedMap[y][x] = true;
+                          }
+                        }
+                      }
+                    }
+                    
+                    // Update UI
+                    updateStats();
+                    const progress = state.totalPixels > 0 ? Math.round((state.paintedPixels / state.totalPixels) * 100) : 0;
+                    const progressBar = document.querySelector("#progressBar");
+                    if (progressBar) progressBar.style.width = `${progress}%`;
+                    
+                    Utils.showAlert(`🔄 Synced +${state.paintedPixels - oldPainted} pixels from slot ${syncData.sourceSlot}`, "success");
+                    
+                    // Auto-save the synced progress
+                    Utils.autoSaveCurrentSlot();
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('❌ Error processing sync data:', error);
+            }
+          }
+        });
+        
+        console.log('👂 Sync listener started - will receive updates from other profiles');
+      },
+
+      // THÊM: Start real-time sync intervals
+      startAutoSync: () => {
+        if (window.syncInterval) {
+          clearInterval(window.syncInterval);
+        }
+        
+        window.syncInterval = setInterval(() => {
+          if (state.autoSync && state.running) {
+            Utils.autoSaveCurrentSlot();
+            Utils.syncToAllProfiles();
+          }
+        }, state.syncInterval * 1000);
+        
+        console.log(`🔄 Auto-sync started: saving every ${state.syncInterval}s`);
+      },
+
+      // THÊM: Stop auto-sync
+      stopAutoSync: () => {
+        if (window.syncInterval) {
+          clearInterval(window.syncInterval);
+          window.syncInterval = null;
+          console.log('⏹️ Auto-sync stopped');
+        }
       },
 
       // THÊM: Export Progress Function
@@ -1067,6 +1311,35 @@
             </button>
           </div>
           
+          <div class="wplace-controls" style="margin-top: 10px;">
+            <button id="saveSlotBtn" class="wplace-btn wplace-btn-primary" disabled>
+              <i class="fas fa-save"></i>
+              <span>${Utils.t("saveSlot")}</span>
+            </button>
+            <button id="loadSlotBtn" class="wplace-btn wplace-btn-primary">
+              <i class="fas fa-folder-open"></i>
+              <span>${Utils.t("loadSlot")}</span>
+            </button>
+          </div>
+          
+          <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
+              <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+              <i class="fas fa-sync"></i>
+              <span>${Utils.t("autoSync")}</span>
+            </label>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span style="color: ${CONFIG.THEME.text}; font-size: 12px;">Slot:</span>
+              <select id="currentSlotSelect" style="background: ${CONFIG.THEME.secondary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 4px; padding: 2px 5px;">
+                <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
+                <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
+                <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
+                <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
+                <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
+              </select>
+            </div>
+          </div>
+          
           <div class="wplace-progress">
             <div id="progressBar" class="wplace-progress-bar" style="width: 0%"></div>
           </div>
@@ -1170,6 +1443,10 @@
       const loadBtn = container.querySelector("#loadBtn");
       const exportBtn = container.querySelector("#exportBtn");
       const importBtn = container.querySelector("#importBtn");
+      const saveSlotBtn = container.querySelector("#saveSlotBtn");
+      const loadSlotBtn = container.querySelector("#loadSlotBtn");
+      const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
+      const currentSlotSelect = container.querySelector("#currentSlotSelect");
       const minimizeBtn = container.querySelector("#minimizeBtn");
       const statusText = container.querySelector("#statusText");
       const progressBar = container.querySelector("#progressBar");
@@ -1415,9 +1692,10 @@
           state.imageLoaded = true;
           state.lastPosition = { x: 0, y: 0 };
   
-          resizeBtn.disabled = false;
-          saveBtn.disabled = false;
-          exportBtn.disabled = false;
+                  resizeBtn.disabled = false;
+        saveBtn.disabled = false;
+        exportBtn.disabled = false;
+        saveSlotBtn.disabled = false;
   
           if (state.startPosition) {
             startBtn.disabled = false;
@@ -1703,6 +1981,131 @@
           Utils.showAlert(Utils.t("invalidProgressFile"), "error");
         }
       });
+
+      // THÊM: Save Slot Button Event Listener
+      saveSlotBtn.addEventListener("click", () => {
+        if (!state.imageLoaded) {
+          Utils.showAlert(Utils.t("missingRequirements"), "error");
+          return;
+        }
+        
+        // Show slot selection dialog
+        const slotsInfo = Utils.getAllSlotsInfo();
+        let dialogText = `${Utils.t("selectSlot")}\n\n`;
+        
+        for (let i = 1; i <= 5; i++) {
+          const info = slotsInfo[i-1];
+          if (info) {
+            const date = new Date(info.timestamp).toLocaleString();
+            const progress = info.totalPixels > 0 ? Math.round((info.paintedPixels / info.totalPixels) * 100) : 0;
+            dialogText += `Slot ${i}: ${info.paintedPixels}/${info.totalPixels} pixels (${progress}%) - ${date}\n`;
+          } else {
+            dialogText += `Slot ${i}: Empty\n`;
+          }
+        }
+        
+        const slotNumber = prompt(dialogText);
+        const slot = parseInt(slotNumber);
+        
+        if (slot >= 1 && slot <= 5) {
+          const success = Utils.saveToSlot(slot);
+          if (success) {
+            Utils.showAlert(Utils.t("slotSaved", {slot: slot}), "success");
+          } else {
+            Utils.showAlert(`❌ Error saving to slot ${slot}`, "error");
+          }
+        } else if (slotNumber !== null) {
+          Utils.showAlert("❌ Invalid slot number. Please select 1-5", "error");
+        }
+      });
+
+      // THÊM: Load Slot Button Event Listener  
+      loadSlotBtn.addEventListener("click", () => {
+        // Show slot selection dialog
+        const slotsInfo = Utils.getAllSlotsInfo();
+        let dialogText = `${Utils.t("selectSlot")}\n\n`;
+        
+        for (let i = 1; i <= 5; i++) {
+          const info = slotsInfo[i-1];
+          if (info) {
+            const date = new Date(info.timestamp).toLocaleString();
+            const progress = info.totalPixels > 0 ? Math.round((info.paintedPixels / info.totalPixels) * 100) : 0;
+            dialogText += `Slot ${i}: ${info.paintedPixels}/${info.totalPixels} pixels (${progress}%) - ${date}\n`;
+          } else {
+            dialogText += `Slot ${i}: Empty\n`;
+          }
+        }
+        
+        const slotNumber = prompt(dialogText);
+        const slot = parseInt(slotNumber);
+        
+        if (slot >= 1 && slot <= 5) {
+          const progressData = Utils.loadFromSlot(slot);
+          if (progressData) {
+            const confirmLoad = confirm(
+              `Load from Slot ${slot}\n\n` +
+              `Saved: ${new Date(progressData.timestamp).toLocaleString()}\n` +
+              `Progress: ${progressData.state.paintedPixels}/${progressData.state.totalPixels} pixels\n\n` +
+              "Do you want to load this data?"
+            );
+            
+            if (confirmLoad) {
+              const success = Utils.restoreProgress(progressData);
+              if (success) {
+                Utils.showAlert(Utils.t("slotLoaded", {slot: slot}), "success");
+                
+                // Enable appropriate buttons after load
+                saveBtn.disabled = false;
+                exportBtn.disabled = false;
+                saveSlotBtn.disabled = false;
+                
+                if (!state.colorsChecked) {
+                  initBotBtn.style.display = "block";
+                }
+                
+                if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
+                  startBtn.disabled = false;
+                }
+              } else {
+                Utils.showAlert(`❌ Error loading from slot ${slot}`, "error");
+              }
+            }
+          } else {
+            Utils.showAlert(Utils.t("slotEmpty", {slot: slot}), "warning");
+          }
+        } else if (slotNumber !== null) {
+          Utils.showAlert("❌ Invalid slot number. Please select 1-5", "error");
+        }
+      });
+
+      // THÊM: Auto-Sync Checkbox Event Listener
+      autoSyncCheckbox.addEventListener("change", () => {
+        state.autoSync = autoSyncCheckbox.checked;
+        console.log(`🔄 Auto-sync ${state.autoSync ? 'enabled' : 'disabled'}`);
+        
+        if (state.autoSync) {
+          Utils.startAutoSync();
+          Utils.showAlert(Utils.t("autoSyncEnabled"), "success");
+        } else {
+          Utils.stopAutoSync();
+          Utils.showAlert(Utils.t("autoSyncDisabled"), "warning");
+        }
+      });
+
+      // THÊM: Current Slot Select Event Listener
+      currentSlotSelect.addEventListener("change", () => {
+        const newSlot = parseInt(currentSlotSelect.value);
+        if (newSlot >= 1 && newSlot <= 5) {
+          state.currentSlot = newSlot;
+          console.log(`📍 Current slot changed to: ${state.currentSlot}`);
+          
+          // Auto-save current progress to new slot
+          if (state.imageLoaded) {
+            Utils.autoSaveCurrentSlot();
+            Utils.showAlert(`📍 Now using slot ${state.currentSlot}`, "info");
+          }
+        }
+      });
       
       // Check for saved progress on startup
       const checkSavedProgress = () => {
@@ -1722,7 +2125,15 @@
       };
       
       // Check for saved progress after a short delay to let UI settle
-      setTimeout(checkSavedProgress, 1000);
+      setTimeout(() => {
+        checkSavedProgress();
+        
+        // THÊM: Start sync listener and auto-sync
+        Utils.startSyncListener();
+        if (state.autoSync) {
+          Utils.startAutoSync();
+        }
+      }, 1000);
     }
   
     async function processImage() {
