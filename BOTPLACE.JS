@@ -715,8 +715,14 @@
 
       // THÊM: Network listener (polling method) - SYNC NGAY LẬP TỨC
       startNetworkListener: () => {
-        // Poll localhost server mỗi 5 giây để nhận sync từ profiles khác (nhanh hơn)
-        setInterval(async () => {
+        // Clear existing network interval if any
+        if (window.networkInterval) {
+          clearInterval(window.networkInterval);
+        }
+        
+        // Poll localhost server với interval bằng 1/2 sync interval để nhận sync từ profiles khác
+        const pollInterval = Math.max(5, Math.floor(state.syncInterval / 2)); // Tối thiểu 5s, tối đa 1/2 sync interval
+        window.networkInterval = setInterval(async () => {
           if (state.autoSync && state.imageLoaded) {
             try {
               const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
@@ -732,9 +738,9 @@
               console.log('🌐 Localhost polling failed: ' + error.message);
             }
           }
-        }, 5000); // Poll every 5 seconds (nhanh hơn)
+        }, pollInterval * 1000); // Poll with configurable interval
         
-        console.log('🌐 Localhost listener started - polling for updates from other profiles every 5s');
+        console.log(`🌐 Localhost listener started - polling for updates from other profiles every ${pollInterval}s`);
       },
 
       // THÊM: Start real-time sync intervals - SYNC LIÊN TỤC
@@ -760,6 +766,11 @@
           clearInterval(window.syncInterval);
           window.syncInterval = null;
           console.log('⏹️ Auto-sync stopped');
+        }
+        if (window.networkInterval) {
+          clearInterval(window.networkInterval);
+          window.networkInterval = null;
+          console.log('⏹️ Network listener stopped');
         }
       },
 
@@ -1490,6 +1501,20 @@
                 <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
                 <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
                 <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text};">
+              <i class="fas fa-clock"></i>
+              <span style="font-size: 12px;">Sync Interval:</span>
+              <select id="syncIntervalSelect" style="background: ${CONFIG.THEME.secondary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 4px; padding: 2px 5px; font-size: 12px;">
+                <option value="5" ${state.syncInterval === 5 ? 'selected' : ''}>5s (Fast)</option>
+                <option value="10" ${state.syncInterval === 10 ? 'selected' : ''}>10s (Normal)</option>
+                <option value="30" ${state.syncInterval === 30 ? 'selected' : ''}>30s (Slow)</option>
+                <option value="60" ${state.syncInterval === 60 ? 'selected' : ''}>1m (Very Slow)</option>
+                <option value="300" ${state.syncInterval === 300 ? 'selected' : ''}>5m (Manual)</option>
               </select>
             </div>
           </div>
@@ -2314,6 +2339,25 @@
           if (state.imageLoaded) {
             Utils.autoSaveCurrentSlot();
             Utils.showAlert(`📍 Now using slot ${state.currentSlot}`, "info");
+          }
+        }
+      });
+
+      // THÊM: Sync Interval Select Event Listener
+      const syncIntervalSelect = container.querySelector("#syncIntervalSelect");
+      syncIntervalSelect.addEventListener("change", () => {
+        const newInterval = parseInt(syncIntervalSelect.value);
+        if (newInterval >= 5 && newInterval <= 300) {
+          state.syncInterval = newInterval;
+          console.log(`⏱️ Sync interval changed to: ${state.syncInterval}s`);
+          
+          // Restart auto-sync with new interval if it's enabled
+          if (state.autoSync) {
+            Utils.stopAutoSync();
+            Utils.startAutoSync();
+            // Restart network listener with new interval
+            Utils.startNetworkListener();
+            Utils.showAlert(`⏱️ Sync interval updated to ${state.syncInterval}s`, "info");
           }
         }
       });
