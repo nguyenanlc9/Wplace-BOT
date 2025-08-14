@@ -64,15 +64,6 @@
         savedDataFound: "✅ Progresso salvo encontrado! Carregar para continuar?",
         savedDate: "Salvo em: {date}",
         clickLoadToContinue: "Clique em 'Carregar Progresso' para continuar.",
-        exportProgress: "Exportar Progresso",
-        importProgress: "Importar Progresso",
-        progressExported: "✅ Progresso exportado com sucesso!",
-        progressImported: "✅ Progresso importado com sucesso!",
-        invalidProgressFile: "❌ Arquivo de progresso inválido",
-        noProgressFileSelected: "❌ Nenhum arquivo selecionado",
-        autoRefreshStarting: "🔄 Iniciando auto-refresh CAPTCHA...",
-        autoRefreshComplete: "✅ Auto-refresh CAPTCHA concluído com sucesso!",
-        autoRefreshFailed: "❌ Auto-refresh CAPTCHA falhou",
       },
       en: {
         title: "WPlace Auto-Image",
@@ -118,15 +109,6 @@
         savedDataFound: "✅ Saved progress found! Load to continue?",
         savedDate: "Saved on: {date}",
         clickLoadToContinue: "Click 'Load Progress' to continue.",
-        exportProgress: "Export Progress",
-        importProgress: "Import Progress",
-        progressExported: "✅ Progress exported successfully!",
-        progressImported: "✅ Progress imported successfully!",
-        invalidProgressFile: "❌ Invalid progress file",
-        noProgressFileSelected: "❌ No file selected",
-        autoRefreshStarting: "🔄 Starting auto-refresh CAPTCHA...",
-        autoRefreshComplete: "✅ Auto-refresh CAPTCHA completed successfully!",
-        autoRefreshFailed: "❌ Auto-refresh CAPTCHA failed",
       },
     };
   
@@ -334,7 +316,6 @@
             const selectPosBtn = document.querySelector("#selectPosBtn");
             const startBtn = document.querySelector("#startBtn");
             const saveBtn = document.querySelector("#saveBtn");
-            const exportBtn = document.querySelector("#exportBtn");
             const progressBar = document.querySelector("#progressBar");
             
             // Show/hide appropriate buttons based on state
@@ -350,7 +331,6 @@
             
             resizeBtn.disabled = false;
             saveBtn.disabled = false;
-            if (exportBtn) exportBtn.disabled = false;
             
             if (state.startPosition && state.region) {
               selectPosBtn.disabled = false;
@@ -401,185 +381,6 @@
   
       hasSavedProgress: () => {
         return localStorage.getItem('wplace-auto-image-progress') !== null;
-      },
-
-      // THÊM: Export Progress Function
-      exportProgress: () => {
-        try {
-          const progressData = {
-            version: "1.0",
-            type: "wplace_progress_export",
-            timestamp: Date.now(),
-            exportTime: new Date().toISOString(),
-            state: {
-              imageLoaded: state.imageLoaded,
-              totalPixels: state.totalPixels,
-              paintedPixels: state.paintedPixels,
-              lastPosition: state.lastPosition,
-              startPosition: state.startPosition,
-              region: state.region,
-              paintedMap: state.paintedMap,
-              imageData: state.imageData,
-              availableColors: state.availableColors,
-              colorsChecked: state.colorsChecked,
-              language: state.language
-            }
-          };
-          
-          const dataStr = JSON.stringify(progressData, null, 2);
-          const dataBlob = new Blob([dataStr], {type: 'application/json'});
-          const url = URL.createObjectURL(dataBlob);
-          
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `wplace-progress-${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.json`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          
-          console.log('✅ Progress exported successfully');
-          return true;
-        } catch (error) {
-          console.error('❌ Error exporting progress:', error);
-          return false;
-        }
-      },
-
-      // THÊM: Import Progress Function
-      importProgress: () => {
-        return new Promise((resolve) => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = '.json';
-          input.onchange = (event) => {
-            const file = event.target.files[0];
-            if (!file) {
-              resolve(null);
-              return;
-            }
-            
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              try {
-                const progressData = JSON.parse(e.target.result);
-                
-                // Validate data structure
-                if (!progressData.version || !progressData.type || 
-                    progressData.type !== "wplace_progress_export" || !progressData.state) {
-                  throw new Error("Invalid progress file format");
-                }
-                
-                resolve(progressData);
-              } catch (error) {
-                console.error('❌ Error parsing progress file:', error);
-                resolve(null);
-              }
-            };
-            reader.readAsText(file);
-          };
-          input.click();
-        });
-      },
-
-      // THÊM: Auto-refresh CAPTCHA function (từ DemoWplace.js)
-      autoRefreshCaptcha: async () => {
-        try {
-          console.log("🔄 Starting auto-refresh CAPTCHA process...");
-          updateUI("autoRefreshStarting", "default");
-          
-          // Bước 1: Click Paint button để mở bảng màu
-          const paintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl');
-          if (!paintBtn) {
-            console.error("❌ Cannot find Paint button");
-            return false;
-          }
-          
-          console.log("✅ Found Paint button, clicking...");
-          paintBtn.click();
-          await Utils.sleep(500);
-          
-          // Bước 2: Chọn màu transparent (color-0)
-          const transBtn = await Utils.waitForSelector('button#color-0', 200, 5000);
-          if (!transBtn) {
-            console.error("❌ Cannot find transparent color button");
-            return false;
-          }
-          
-          console.log("✅ Found transparent button, clicking...");
-          transBtn.click();
-          await Utils.sleep(500);
-          
-          // Bước 3: Click vào canvas để trigger CAPTCHA
-          const canvas = await Utils.waitForSelector('canvas');
-          if (!canvas) {
-            console.error("❌ Cannot find canvas");
-            return false;
-          }
-          
-          canvas.setAttribute('tabindex', '0');
-          canvas.focus();
-          const rect = canvas.getBoundingClientRect();
-          const centerX = Math.round(rect.left + rect.width / 2);
-          const centerY = Math.round(rect.top + rect.height / 2);
-          
-          const moveEvt = new MouseEvent('mousemove', {
-            clientX: centerX,
-            clientY: centerY,
-            bubbles: true
-          });
-          canvas.dispatchEvent(moveEvt);
-          
-          const keyDown = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true });
-          const keyUp = new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true });
-          canvas.dispatchEvent(keyDown);
-          canvas.dispatchEvent(keyUp);
-          
-          await Utils.sleep(1000);
-          
-          // Bước 4: Click nút Paint để confirm
-          let confirmBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl', 200, 10000);
-          
-          if (!confirmBtn) {
-            const allPrimary = Array.from(document.querySelectorAll('button.btn-primary'));
-            confirmBtn = allPrimary.length ? allPrimary[allPrimary.length - 1] : null;
-          }
-          
-          if (confirmBtn) {
-            console.log("✅ Found confirmation button, clicking...");
-            confirmBtn.click();
-            await Utils.sleep(1000);
-            
-            updateUI("autoRefreshComplete", "success");
-            console.log("✅ Auto-refresh CAPTCHA completed successfully");
-            return true;
-          } else {
-            console.error("❌ Cannot find confirm button");
-            return false;
-          }
-          
-        } catch (error) {
-          console.error("❌ Auto-refresh CAPTCHA failed:", error);
-          updateUI("autoRefreshFailed", "error");
-          return false;
-        }
-      },
-
-      // THÊM: Wait for selector helper
-      waitForSelector: async (selector, interval = 200, timeout = 5000) => {
-        const start = Date.now();
-        while (Date.now() - start < timeout) {
-          const el = document.querySelector(selector);
-          if (el && el.offsetParent !== null && !el.disabled) {
-            const rect = el.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              return el;
-            }
-          }
-          await Utils.sleep(interval);
-        }
-        console.log(`⚠️ Timeout waiting for selector: ${selector}`);
-        return null;
       },
   
       showAlert: (message, type = "info") => {
@@ -1052,14 +853,6 @@
               <i class="fas fa-folder-open"></i>
               <span>${Utils.t("loadData")}</span>
             </button>
-            <button id="exportBtn" class="wplace-btn wplace-btn-primary" disabled>
-              <i class="fas fa-download"></i>
-              <span>${Utils.t("exportProgress")}</span>
-            </button>
-            <button id="importBtn" class="wplace-btn wplace-btn-primary">
-              <i class="fas fa-upload"></i>
-              <span>${Utils.t("importProgress")}</span>
-            </button>
           </div>
           
           <div class="wplace-progress">
@@ -1163,8 +956,6 @@
       const stopBtn = container.querySelector("#stopBtn");
       const saveBtn = container.querySelector("#saveBtn");
       const loadBtn = container.querySelector("#loadBtn");
-      const exportBtn = container.querySelector("#exportBtn");
-      const importBtn = container.querySelector("#importBtn");
       const minimizeBtn = container.querySelector("#minimizeBtn");
       const statusText = container.querySelector("#statusText");
       const progressBar = container.querySelector("#progressBar");
@@ -1410,7 +1201,6 @@
   
           resizeBtn.disabled = false;
           saveBtn.disabled = false;
-          exportBtn.disabled = false;
   
           if (state.startPosition) {
             startBtn.disabled = false;
@@ -1591,7 +1381,6 @@
             
             // Enable appropriate buttons
             saveBtn.disabled = false;
-            exportBtn.disabled = false;
             
             // Show init button if colors not checked yet
             if (!state.colorsChecked) {
@@ -1604,65 +1393,6 @@
           } else {
             Utils.showAlert("❌ Erro ao carregar progresso", "error");
           }
-        }
-      });
-
-      // THÊM: Export Button Event Listener
-      exportBtn.addEventListener("click", () => {
-        if (!state.imageLoaded) {
-          Utils.showAlert(Utils.t("missingRequirements"), "error");
-          return;
-        }
-        
-        const success = Utils.exportProgress();
-        if (success) {
-          updateUI("progressExported", "success");
-          Utils.showAlert(Utils.t("progressExported"), "success");
-        } else {
-          Utils.showAlert("❌ Erro ao exportar progresso", "error");
-        }
-      });
-
-      // THÊM: Import Button Event Listener
-      importBtn.addEventListener("click", async () => {
-        try {
-          const progressData = await Utils.importProgress();
-          if (!progressData) {
-            updateUI("noProgressFileSelected", "warning");
-            Utils.showAlert(Utils.t("noProgressFileSelected"), "warning");
-            return;
-          }
-          
-          // Show confirmation dialog with file info
-          const confirmImport = confirm(
-            `${Utils.t("progressImported")}\n\n` +
-            `Export time: ${progressData.exportTime}\n` +
-            `Total pixels: ${progressData.state?.totalPixels || 0}\n` +
-            `Painted pixels: ${progressData.state?.paintedPixels || 0}\n\n` +
-            "Bạn có muốn import dữ liệu này không?"
-          );
-          
-          if (confirmImport) {
-            const success = Utils.restoreProgress(progressData);
-            if (success) {
-              updateUI("progressImported", "success");
-              Utils.showAlert(Utils.t("progressImported"), "success");
-              
-              // Enable appropriate buttons after import
-              exportBtn.disabled = false;
-              saveBtn.disabled = false;
-              
-              if (state.colorsChecked && state.startPosition && state.region) {
-                startBtn.disabled = false;
-              }
-            } else {
-              Utils.showAlert("❌ Erro ao importar progresso", "error");
-            }
-          }
-        } catch (error) {
-          console.error("Import error:", error);
-          updateUI("invalidProgressFile", "error");
-          Utils.showAlert(Utils.t("invalidProgressFile"), "error");
         }
       });
       
@@ -1742,32 +1472,10 @@
             if (pixelBatch.length >= Math.floor(state.currentCharges)) {
               const success = await sendPixelBatch(pixelBatch, regionX, regionY);
   
-              // THÊM: Auto-refresh CAPTCHA khi gặp token_error
               if (success === "token_error") {
-                console.log("🔄 CAPTCHA token expired, attempting auto-refresh...");
-                updateUI("autoRefreshStarting", "warning");
-                
-                // Thử auto-refresh CAPTCHA
-                const refreshSuccess = await Utils.autoRefreshCaptcha();
-                
-                if (refreshSuccess) {
-                  // Đợi một chút để token được capture
-                  await Utils.sleep(2000);
-                  
-                  // Kiểm tra xem có token mới không
-                  if (capturedCaptchaToken) {
-                    updateUI("autoRefreshComplete", "success");
-                    Utils.showAlert(Utils.t("autoRefreshComplete"), "success");
-                    // Reset pixel batch để bắt đầu lại
-                    pixelBatch = [];
-                    continue; // Tiếp tục painting
-                  }
-                }
-                
-                // Nếu auto-refresh thất bại, dừng bot
                 state.stopFlag = true;
-                updateUI("autoRefreshFailed", "error");
-                Utils.showAlert(Utils.t("autoRefreshFailed"), "error");
+                updateUI("captchaNeeded", "error");
+                Utils.showAlert(Utils.t("captchaNeeded"), "error");
                 break outerLoop;
               }
   
