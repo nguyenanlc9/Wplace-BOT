@@ -70,6 +70,10 @@
       pixelDataImported: "✅ Dados de pixel importados com sucesso!",
       invalidPixelFile: "❌ Arquivo de pixel inválido",
       noPixelFileSelected: "❌ Nenhum arquivo selecionado",
+      waitingCharges: "⚡ Aguardando cargas suficientes ({charges}/2) para auto-refresh...",
+      autoRefreshStarting: "🔄 Iniciando auto-refresh CAPTCHA...",
+      autoRefreshComplete: "✅ Auto-refresh CAPTCHA concluído com sucesso!",
+      autoRefreshFailed: "❌ Falha no auto-refresh CAPTCHA",
     },
     en: {
       title: "WPlace Auto-Image",
@@ -121,6 +125,10 @@
       pixelDataImported: "✅ Pixel data imported successfully!",
       invalidPixelFile: "❌ Invalid pixel file",
       noPixelFileSelected: "❌ No file selected",
+      waitingCharges: "⚡ Waiting for sufficient charges ({charges}/2) for auto-refresh...",
+      autoRefreshStarting: "🔄 Starting auto-refresh CAPTCHA...",
+      autoRefreshComplete: "✅ Auto-refresh CAPTCHA completed successfully!",
+      autoRefreshFailed: "❌ Auto-refresh CAPTCHA failed",
     },
   };
 
@@ -144,6 +152,7 @@
     lastPosition: { x: 0, y: 0 },
     estimatedTime: 0,
     language: "en",
+    autoRefresh: true, // Bật auto-refresh mặc định
   };
 
   // Global variable to store the captured CAPTCHA token.
@@ -269,7 +278,8 @@
             imageData: state.imageData,
             availableColors: state.availableColors,
             colorsChecked: state.colorsChecked,
-            language: state.language
+            language: state.language,
+            autoRefresh: state.autoRefresh
           }
         };
         
@@ -318,6 +328,7 @@
         state.imageData = savedState.imageData;
         state.availableColors = savedState.availableColors;
         state.language = savedState.language;
+        state.autoRefresh = savedState.autoRefresh !== undefined ? savedState.autoRefresh : true;
         state.colorsChecked = savedState.availableColors && savedState.availableColors.length > 0;
         
         // Update UI to reflect restored state
@@ -329,7 +340,13 @@
           const startBtn = document.querySelector("#startBtn");
           const saveBtn = document.querySelector("#saveBtn");
           const exportPixelBtn = document.querySelector("#exportPixelBtn");
+          const autoRefreshCheckbox = document.querySelector("#autoRefreshCheckbox");
           const progressBar = document.querySelector("#progressBar");
+          
+          // Update auto-refresh checkbox
+          if (autoRefreshCheckbox) {
+            autoRefreshCheckbox.checked = state.autoRefresh;
+          }
           
           // Show/hide appropriate buttons based on state
           if (state.colorsChecked) {
@@ -456,6 +473,135 @@
         text = text.replace(`{${k}}`, v);
       }
       return text;
+    },
+
+    // Auto-refresh CAPTCHA thông minh
+    autoRefreshCaptcha: async () => {
+      try {
+        console.log("🔄 Starting auto-refresh CAPTCHA process...");
+        
+        // Đợi có đủ charges trước khi refresh
+        let chargeInfo = await WPlaceService.getCharges();
+        if (chargeInfo.charges < 2) {
+          updateUI("waitingCharges", "warning", { 
+            charges: chargeInfo.charges 
+          });
+          
+          while (chargeInfo.charges < 2) {
+            await Utils.sleep(30000); // Đợi 30s
+            chargeInfo = await WPlaceService.getCharges();
+            state.currentCharges = chargeInfo.charges;
+            updateStats();
+          }
+        }
+
+        updateUI("autoRefreshStarting", "default");
+        
+        // Bước 1: Tìm và click nút Paint
+        const mainPaintBtn = await Utils.waitForSelector(
+          'button.btn.btn-primary.btn-lg, button.btn-primary.sm\\:btn-xl, button[class*="btn-primary"]',
+          200, 10000
+        );
+        
+        if (!mainPaintBtn) {
+          console.error("❌ Cannot find Paint button");
+          return false;
+        }
+        
+        mainPaintBtn.click();
+        await Utils.sleep(800);
+        
+        // Bước 2: Chọn màu transparent (color-0)
+        const transBtn = await Utils.waitForSelector('button#color-0', 200, 5000);
+        if (!transBtn) {
+          console.error("❌ Cannot find transparent color button");
+          return false;
+        }
+        
+        transBtn.click();
+        await Utils.sleep(800);
+        
+        // Bước 3: Click vào canvas để trigger CAPTCHA
+        const canvas = await Utils.waitForSelector('canvas', 200, 5000);
+        if (!canvas) {
+          console.error("❌ Cannot find canvas");
+          return false;
+        }
+        
+        // Setup canvas for interaction
+        canvas.setAttribute('tabindex', '0');
+        canvas.focus();
+        
+        const rect = canvas.getBoundingClientRect();
+        const centerX = Math.round(rect.left + rect.width / 2);
+        const centerY = Math.round(rect.top + rect.height / 2);
+        
+        // Simulate mouse move và space key press
+        const moveEvt = new MouseEvent('mousemove', {
+          clientX: centerX,
+          clientY: centerY,
+          bubbles: true
+        });
+        canvas.dispatchEvent(moveEvt);
+        
+        await Utils.sleep(300);
+        
+        const keyDown = new KeyboardEvent('keydown', { 
+          key: ' ', 
+          code: 'Space', 
+          bubbles: true 
+        });
+        const keyUp = new KeyboardEvent('keyup', { 
+          key: ' ', 
+          code: 'Space', 
+          bubbles: true 
+        });
+        
+        canvas.dispatchEvent(keyDown);
+        canvas.dispatchEvent(keyUp);
+        
+        await Utils.sleep(1000);
+        
+        // Bước 4: Confirm paint
+        let confirmBtn = await Utils.waitForSelector(
+          'button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl',
+          200, 5000
+        );
+        
+        if (!confirmBtn) {
+          // Fallback: tìm tất cả primary buttons
+          const allPrimary = Array.from(document.querySelectorAll('button.btn-primary, button[class*="btn-primary"]'));
+          confirmBtn = allPrimary.length ? allPrimary[allPrimary.length - 1] : null;
+        }
+        
+        if (confirmBtn) {
+          confirmBtn.click();
+          await Utils.sleep(1500);
+          
+          updateUI("autoRefreshComplete", "success");
+          console.log("✅ Auto-refresh CAPTCHA completed successfully");
+          return true;
+        } else {
+          console.error("❌ Cannot find confirm button");
+          return false;
+        }
+        
+      } catch (error) {
+        console.error("❌ Auto-refresh CAPTCHA failed:", error);
+        updateUI("autoRefreshFailed", "error");
+        return false;
+      }
+    },
+
+    // Hàm đợi element xuất hiện
+    waitForSelector: async (selector, interval = 200, timeout = 5000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        const el = document.querySelector(selector);
+        if (el && el.offsetParent !== null) return el; // Đảm bảo element visible
+        await Utils.sleep(interval);
+      }
+      return null;
     },
 
     exportPixelData: () => {
@@ -662,7 +808,7 @@
             "❌ 403 Forbidden. CAPTCHA token might be invalid or expired."
           );
           capturedCaptchaToken = null; // Invalidate our stored token.
-          return "token_error"; // Return a special status to stop the bot.
+          return "token_error"; // Return a special status to trigger auto-refresh.
         }
 
         const data = await res.json();
@@ -1055,6 +1201,14 @@
             <i class="fas fa-upload"></i>
             <span>${Utils.t("importPixel")}</span>
           </button>
+        </div>
+        
+        <div class="wplace-controls" style="padding: 10px; justify-content: center;">
+          <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
+            <input type="checkbox" id="autoRefreshCheckbox" ${state.autoRefresh ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+            <i class="fas fa-sync-alt"></i>
+            <span>Auto-Refresh CAPTCHA</span>
+          </label>
         </div>
         
         <div class="wplace-progress">
@@ -1658,6 +1812,13 @@
         Utils.showAlert(Utils.t("invalidPixelFile"), "error");
       }
     });
+
+    // Auto-refresh checkbox event listener
+    const autoRefreshCheckbox = container.querySelector("#autoRefreshCheckbox");
+    autoRefreshCheckbox.addEventListener("change", () => {
+      state.autoRefresh = autoRefreshCheckbox.checked;
+      console.log(`Auto-refresh CAPTCHA ${state.autoRefresh ? 'enabled' : 'disabled'}`);
+    });
     
     // Check for saved progress on startup
     const checkSavedProgress = () => {
@@ -1736,10 +1897,37 @@
             const success = await sendPixelBatch(pixelBatch, regionX, regionY);
 
             if (success === "token_error") {
-              state.stopFlag = true;
-              updateUI("captchaNeeded", "error");
-              Utils.showAlert(Utils.t("captchaNeeded"), "error");
-              break outerLoop;
+              if (state.autoRefresh) {
+                updateUI("captchaNeeded", "warning");
+                console.log("🔄 CAPTCHA token expired, attempting auto-refresh...");
+                
+                // Thử auto-refresh CAPTCHA
+                const refreshSuccess = await Utils.autoRefreshCaptcha();
+                
+                if (refreshSuccess) {
+                  // Đợi một chút để token được capture
+                  await Utils.sleep(2000);
+                  
+                  // Kiểm tra xem có token mới không
+                  if (capturedCaptchaToken) {
+                    updateUI("autoRefreshComplete", "success");
+                    Utils.showAlert(Utils.t("autoRefreshComplete"), "success");
+                    continue; // Tiếp tục painting
+                  }
+                }
+                
+                // Nếu auto-refresh thất bại, dừng bot
+                state.stopFlag = true;
+                updateUI("autoRefreshFailed", "error");
+                Utils.showAlert(Utils.t("autoRefreshFailed"), "error");
+                break outerLoop;
+              } else {
+                // Auto-refresh bị tắt, dừng bot và yêu cầu manual
+                state.stopFlag = true;
+                updateUI("captchaNeeded", "error");
+                Utils.showAlert(Utils.t("captchaNeeded"), "error");
+                break outerLoop;
+              }
             }
 
             if (success) {
