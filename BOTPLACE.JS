@@ -578,11 +578,11 @@
         }
       },
 
-      // THÊM: Sync qua network (WebSocket/Server)
+      // THÊM: Sync qua localhost server
       syncToNetwork: async (syncData) => {
         try {
-          // Gửi sync data đến server hoặc WebSocket
-          const response = await fetch('https://api.wplace-sync.com/sync', {
+          // Gửi sync data đến localhost server
+          const response = await fetch('http://localhost:3000/sync', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -595,11 +595,13 @@
           });
           
           if (response.ok) {
-            console.log('🌐 Network sync successful');
+            console.log('🌐 Localhost sync successful');
+          } else {
+            throw new Error(`Server responded with ${response.status}`);
           }
         } catch (error) {
-          // Fallback: sử dụng localStorage cho cùng IP
-          console.log('🌐 Network sync failed, using localStorage fallback');
+          console.log('🌐 Localhost sync failed: ' + error.message);
+          console.log('💡 Make sure sync server is running: npm start in sync-server folder');
         }
       },
 
@@ -690,11 +692,11 @@
 
       // THÊM: Network listener (polling method)
       startNetworkListener: () => {
-        // Poll server mỗi 10 giây để nhận sync từ profiles khác
+        // Poll localhost server mỗi 10 giây để nhận sync từ profiles khác
         setInterval(async () => {
           if (state.autoSync && state.imageLoaded) {
             try {
-              const response = await fetch(`https://api.wplace-sync.com/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
+              const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
               if (response.ok) {
                 const syncData = await response.json();
                 if (syncData && syncData.length > 0) {
@@ -703,11 +705,12 @@
               }
             } catch (error) {
               // Fallback to localStorage only
+              console.log('🌐 Localhost polling failed: ' + error.message);
             }
           }
         }, 10000); // Poll every 10 seconds
         
-        console.log('🌐 Network listener started - polling for updates from other IP profiles');
+        console.log('🌐 Localhost listener started - polling for updates from other profiles');
       },
 
       // THÊM: Start real-time sync intervals
