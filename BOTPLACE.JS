@@ -176,6 +176,8 @@
     autoSync: true, // THÊM: Auto-sync enabled
     syncInterval: 5, // THÊM: Sync every 5 seconds
     currentSlot: 1, // THÊM: Current active slot
+    ipAddress: null, // THÊM: IP address
+    profileId: null, // THÊM: Unique profile ID
   };
   
     // Global variable to store the captured CAPTCHA token.
@@ -543,7 +545,7 @@
         return false;
       },
 
-      // THÊM: Sync progress to all other profiles/tabs
+      // THÊM: Sync progress to all other profiles/tabs và theo IP
       syncToAllProfiles: () => {
         try {
           // Broadcast current progress to other tabs/profiles
@@ -551,6 +553,8 @@
             type: 'wplace_sync',
             timestamp: Date.now(),
             sourceSlot: state.currentSlot,
+            profileId: state.profileId || 'unknown',
+            ipAddress: state.ipAddress || 'unknown',
             progress: {
               paintedPixels: state.paintedPixels,
               totalPixels: state.totalPixels,
@@ -559,11 +563,14 @@
             }
           };
           
-          // Use localStorage events to sync between tabs
+          // Use localStorage events to sync between tabs cùng browser
           localStorage.setItem('wplace-sync-broadcast', JSON.stringify(syncData));
           localStorage.removeItem('wplace-sync-broadcast'); // Trigger storage event
           
-          console.log(`📡 Broadcasted progress: ${state.paintedPixels}/${state.totalPixels} pixels to other profiles`);
+          // THÊM: Sync qua WebSocket hoặc Server nếu có
+          Utils.syncToNetwork(syncData);
+          
+          console.log(`📡 Broadcasted progress: ${state.paintedPixels}/${state.totalPixels} pixels to other profiles (IP: ${state.ipAddress})`);
           return true;
         } catch (error) {
           console.error('❌ Error syncing to other profiles:', error);
@@ -571,56 +578,136 @@
         }
       },
 
-      // THÊM: Listen for sync from other profiles
+      // THÊM: Sync qua network (WebSocket/Server)
+      syncToNetwork: async (syncData) => {
+        try {
+          // Gửi sync data đến server hoặc WebSocket
+          const response = await fetch('https://api.wplace-sync.com/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...syncData,
+              apiKey: 'wplace_sync_2024',
+              version: '1.0'
+            })
+          });
+          
+          if (response.ok) {
+            console.log('🌐 Network sync successful');
+          }
+        } catch (error) {
+          // Fallback: sử dụng localStorage cho cùng IP
+          console.log('🌐 Network sync failed, using localStorage fallback');
+        }
+      },
+
+      // THÊM: Detect IP và Profile ID
+      detectNetworkInfo: async () => {
+        try {
+          // Detect IP address
+          const ipResponse = await fetch('https://api.ipify.org?format=json');
+          const ipData = await ipResponse.json();
+          state.ipAddress = ipData.ip;
+          
+          // Generate unique profile ID
+          state.profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          
+          console.log(`🌐 Network info: IP=${state.ipAddress}, Profile=${state.profileId}`);
+          return true;
+        } catch (error) {
+          console.error('❌ Error detecting network info:', error);
+          state.ipAddress = 'unknown';
+          state.profileId = `profile_${Date.now()}`;
+          return false;
+        }
+      },
+
+      // THÊM: Listen for sync from other profiles (theo IP)
       startSyncListener: () => {
+        // LocalStorage listener cho cùng browser
         window.addEventListener('storage', (e) => {
           if (e.key === 'wplace-sync-broadcast' && e.newValue) {
-            try {
-              const syncData = JSON.parse(e.newValue);
-              
-              if (syncData.type === 'wplace_sync' && syncData.sourceSlot !== state.currentSlot) {
-                console.log(`📥 Received sync from slot ${syncData.sourceSlot}: ${syncData.progress.paintedPixels}/${syncData.progress.totalPixels} pixels`);
-                
-                // Update current progress if we're on the same project
-                if (state.imageLoaded && state.totalPixels === syncData.progress.totalPixels) {
-                  const oldPainted = state.paintedPixels;
-                  
-                  // Merge progress (take the maximum painted pixels)
-                  if (syncData.progress.paintedPixels > state.paintedPixels) {
-                    state.paintedPixels = syncData.progress.paintedPixels;
-                    state.lastPosition = syncData.progress.lastPosition;
-                    
-                    // Merge painted maps
-                    if (syncData.progress.paintedMap && state.paintedMap) {
-                      for (let y = 0; y < state.paintedMap.length; y++) {
-                        for (let x = 0; x < state.paintedMap[y].length; x++) {
-                          if (syncData.progress.paintedMap[y] && syncData.progress.paintedMap[y][x]) {
-                            state.paintedMap[y][x] = true;
-                          }
-                        }
-                      }
-                    }
-                    
-                    // Update UI
-                    updateStats();
-                    const progress = state.totalPixels > 0 ? Math.round((state.paintedPixels / state.totalPixels) * 100) : 0;
-                    const progressBar = document.querySelector("#progressBar");
-                    if (progressBar) progressBar.style.width = `${progress}%`;
-                    
-                    Utils.showAlert(`🔄 Synced +${state.paintedPixels - oldPainted} pixels from slot ${syncData.sourceSlot}`, "success");
-                    
-                    // Auto-save the synced progress
-                    Utils.autoSaveCurrentSlot();
-                  }
-                }
-              }
-            } catch (error) {
-              console.error('❌ Error processing sync data:', error);
-            }
+            Utils.processSyncData(JSON.parse(e.newValue));
           }
         });
         
-        console.log('👂 Sync listener started - will receive updates from other profiles');
+        // THÊM: Network listener cho cùng IP
+        Utils.startNetworkListener();
+        
+        console.log('👂 Sync listener started - will receive updates from other profiles (IP: ' + state.ipAddress + ')');
+      },
+
+      // THÊM: Process sync data (common function)
+      processSyncData: (syncData) => {
+        try {
+          // Kiểm tra IP và slot
+          if (syncData.type === 'wplace_sync' && 
+              syncData.sourceSlot === state.currentSlot &&
+              syncData.ipAddress === state.ipAddress &&
+              syncData.profileId !== state.profileId) {
+            
+            console.log(`📥 Received sync from ${syncData.profileId} (IP: ${syncData.ipAddress}): ${syncData.progress.paintedPixels}/${syncData.progress.totalPixels} pixels`);
+            
+            // Update current progress if we're on the same project
+            if (state.imageLoaded && state.totalPixels === syncData.progress.totalPixels) {
+              const oldPainted = state.paintedPixels;
+              
+              // Merge progress (take the maximum painted pixels)
+              if (syncData.progress.paintedPixels > state.paintedPixels) {
+                state.paintedPixels = syncData.progress.paintedPixels;
+                state.lastPosition = syncData.progress.lastPosition;
+                
+                // Merge painted maps
+                if (syncData.progress.paintedMap && state.paintedMap) {
+                  for (let y = 0; y < state.paintedMap.length; y++) {
+                    for (let x = 0; x < state.paintedMap[y].length; x++) {
+                      if (syncData.progress.paintedMap[y] && syncData.progress.paintedMap[y][x]) {
+                        state.paintedMap[y][x] = true;
+                      }
+                    }
+                  }
+                }
+                
+                // Update UI
+                updateStats();
+                const progress = state.totalPixels > 0 ? Math.round((state.paintedPixels / state.totalPixels) * 100) : 0;
+                const progressBar = document.querySelector("#progressBar");
+                if (progressBar) progressBar.style.width = `${progress}%`;
+                
+                Utils.showAlert(`🔄 Synced +${state.paintedPixels - oldPainted} pixels from ${syncData.profileId}`, "success");
+                
+                // Auto-save the synced progress
+                Utils.autoSaveCurrentSlot();
+              }
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error processing sync data:', error);
+        }
+      },
+
+      // THÊM: Network listener (polling method)
+      startNetworkListener: () => {
+        // Poll server mỗi 10 giây để nhận sync từ profiles khác
+        setInterval(async () => {
+          if (state.autoSync && state.imageLoaded) {
+            try {
+              const response = await fetch(`https://api.wplace-sync.com/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
+              if (response.ok) {
+                const syncData = await response.json();
+                if (syncData && syncData.length > 0) {
+                  syncData.forEach(data => Utils.processSyncData(data));
+                }
+              }
+            } catch (error) {
+              // Fallback to localStorage only
+            }
+          }
+        }, 10000); // Poll every 10 seconds
+        
+        console.log('🌐 Network listener started - polling for updates from other IP profiles');
       },
 
       // THÊM: Start real-time sync intervals
@@ -2129,10 +2216,12 @@
         checkSavedProgress();
         
         // THÊM: Start sync listener and auto-sync
-        Utils.startSyncListener();
-        if (state.autoSync) {
-          Utils.startAutoSync();
-        }
+        Utils.detectNetworkInfo().then(() => {
+          Utils.startSyncListener();
+          if (state.autoSync) {
+            Utils.startAutoSync();
+          }
+        });
       }, 1000);
     }
   
