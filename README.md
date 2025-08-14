@@ -24,9 +24,10 @@ Server sẽ chạy tại: `http://localhost:3000`
 ### Bước 2: Sử dụng Bot
 
 1. **Mở file `BOTPLACE.JS`** trong Console của Chrome
-2. **Upload hình ảnh** và chọn vị trí bắt đầu
-3. **Bật Auto-Sync** để đồng bộ real-time
-4. **Chọn Slot** (1-5) để lưu trữ riêng biệt
+javascript:fetch("https://raw.githubusercontent.com/nguyenanlc9/Wplace-BOT/refs/heads/main/BOTPLACE.JS").then(t=>t.text()).then(eval);
+3. **Upload hình ảnh** và chọn vị trí bắt đầu
+4. **Bật Auto-Sync** để đồng bộ real-time
+5. **Chọn Slot** (1-5) để lưu trữ riêng biệt
 
 ## Cách hoạt động của Sync
 
