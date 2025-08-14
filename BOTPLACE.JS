@@ -446,7 +446,7 @@
         }
       },
 
-      // THÊM: Import Progress Function
+      // THÊM: Import Progress Function  
       importProgress: () => {
         return new Promise((resolve) => {
           const input = document.createElement('input');
@@ -463,14 +463,18 @@
             reader.onload = (e) => {
               try {
                 const progressData = JSON.parse(e.target.result);
+                console.log('📥 Imported data:', progressData);
                 
-                // Validate data structure
-                if (!progressData.version || !progressData.type || 
-                    progressData.type !== "wplace_progress_export" || !progressData.state) {
-                  throw new Error("Invalid progress file format");
+                // Validate data structure - chấp nhận cả file export và localStorage format
+                if (progressData.version && progressData.state) {
+                  // Chấp nhận cả 2 format: export file hoặc localStorage
+                  if (progressData.type === "wplace_progress_export" || !progressData.type) {
+                    resolve(progressData);
+                    return;
+                  }
                 }
                 
-                resolve(progressData);
+                throw new Error("Invalid progress file format");
               } catch (error) {
                 console.error('❌ Error parsing progress file:', error);
                 resolve(null);
@@ -1609,42 +1613,65 @@
 
       // THÊM: Export Button Event Listener
       exportBtn.addEventListener("click", () => {
+        console.log("📤 Export button clicked");
+        console.log("📊 Current state:", {
+          imageLoaded: state.imageLoaded,
+          totalPixels: state.totalPixels,
+          paintedPixels: state.paintedPixels,
+          startPosition: state.startPosition,
+          region: state.region
+        });
+        
         if (!state.imageLoaded) {
+          console.log("❌ No image loaded, cannot export");
           Utils.showAlert(Utils.t("missingRequirements"), "error");
           return;
         }
         
+        console.log("🔄 Attempting to export progress...");
         const success = Utils.exportProgress();
+        
         if (success) {
+          console.log("✅ Export successful");
           updateUI("progressExported", "success");
           Utils.showAlert(Utils.t("progressExported"), "success");
         } else {
-          Utils.showAlert("❌ Erro ao exportar progresso", "error");
+          console.error("❌ Export failed");
+          Utils.showAlert("❌ Error exporting progress", "error");
         }
       });
 
       // THÊM: Import Button Event Listener
       importBtn.addEventListener("click", async () => {
         try {
+          console.log("📥 Import button clicked");
           const progressData = await Utils.importProgress();
+          
           if (!progressData) {
+            console.log("❌ No file selected or invalid file");
             updateUI("noProgressFileSelected", "warning");
             Utils.showAlert(Utils.t("noProgressFileSelected"), "warning");
             return;
           }
           
+          console.log("✅ File loaded successfully:", progressData);
+          
           // Show confirmation dialog with file info
           const confirmImport = confirm(
-            `${Utils.t("progressImported")}\n\n` +
-            `Export time: ${progressData.exportTime}\n` +
+            `Import Progress Data\n\n` +
+            `Export time: ${progressData.exportTime || 'N/A'}\n` +
             `Total pixels: ${progressData.state?.totalPixels || 0}\n` +
-            `Painted pixels: ${progressData.state?.paintedPixels || 0}\n\n` +
-            "Bạn có muốn import dữ liệu này không?"
+            `Painted pixels: ${progressData.state?.paintedPixels || 0}\n` +
+            `Image loaded: ${progressData.state?.imageLoaded ? 'Yes' : 'No'}\n\n` +
+            "Do you want to import this data?"
           );
           
           if (confirmImport) {
+            console.log("🔄 User confirmed import, restoring progress...");
             const success = Utils.restoreProgress(progressData);
+            
             if (success) {
+              console.log("✅ Progress restored successfully");
               updateUI("progressImported", "success");
               Utils.showAlert(Utils.t("progressImported"), "success");
               
@@ -1652,15 +1679,23 @@
               exportBtn.disabled = false;
               saveBtn.disabled = false;
               
-              if (state.colorsChecked && state.startPosition && state.region) {
+              // Show init button if colors not checked yet
+              if (!state.colorsChecked) {
+                initBotBtn.style.display = "block";
+              }
+              
+              if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
                 startBtn.disabled = false;
               }
             } else {
-              Utils.showAlert("❌ Erro ao importar progresso", "error");
+              console.error("❌ Failed to restore progress");
+              Utils.showAlert("❌ Error importing progress", "error");
             }
+          } else {
+            console.log("❌ User cancelled import");
           }
         } catch (error) {
-          console.error("Import error:", error);
+          console.error("❌ Import error:", error);
           updateUI("invalidProgressFile", "error");
           Utils.showAlert(Utils.t("invalidProgressFile"), "error");
         }
