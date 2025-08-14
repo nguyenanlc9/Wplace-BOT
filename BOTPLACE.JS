@@ -501,25 +501,33 @@
 
         updateUI("autoRefreshStarting", "default");
         
-        // Bước 1: Tìm và click nút Paint (selector giống DemoWplace.js)
-        const mainPaintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn-primary.sm\\:btn-xl');
-        if (!mainPaintBtn) {
-          console.error("❌ Cannot find Paint button");
-          return false;
+        // Kiểm tra xem có đang trong paint mode không
+        const existingPaintBtn = document.querySelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl');
+        if (!existingPaintBtn) {
+          console.log("🔍 Not in paint mode, looking for Paint button...");
+          const mainPaintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn-primary.sm\\:btn-xl');
+          if (!mainPaintBtn) {
+            console.error("❌ Cannot find Paint button");
+            return false;
+          }
+          console.log("✅ Found Paint button, clicking...");
+          mainPaintBtn.click();
+          await Utils.sleep(500);
+        } else {
+          console.log("✅ Already in paint mode");
         }
-        
-        mainPaintBtn.click();
-        await Utils.sleep(500); // Timing giống DemoWplace.js
         
         updateUI("selectingTransparent", "default");
         
         // Bước 2: Chọn màu transparent (color-0) - giống DemoWplace.js
+        console.log("🔍 Looking for transparent color button...");
         const transBtn = await Utils.waitForSelector('button#color-0');
         if (!transBtn) {
           console.error("❌ Cannot find transparent color button");
           return false;
         }
         
+        console.log("✅ Found transparent button, clicking...");
         transBtn.click();
         await Utils.sleep(500);
         
@@ -550,13 +558,16 @@
         canvas.dispatchEvent(keyDown);
         canvas.dispatchEvent(keyUp);
         
-        await Utils.sleep(500);
+        // Đợi UI phản hồi sau khi click canvas
+        await Utils.sleep(1000);
         
         updateUI("confirmingPaint", "default");
         
-        // Bước 4: Confirm paint - logic giống DemoWplace.js
+        // Bước 4: ĐỢI nút Paint xuất hiện sau khi đã click canvas
+        console.log("🔍 Waiting for Paint confirmation button...");
         let confirmBtn = await Utils.waitForSelector(
-          'button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl'
+          'button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl',
+          200, 10000  // Tăng timeout lên 10s để đợi nút Paint load
         );
         
         if (!confirmBtn) {
@@ -566,6 +577,7 @@
         }
         
         if (confirmBtn) {
+          console.log("✅ Found confirmation button, clicking...");
           confirmBtn.click();
           await Utils.sleep(1000); // Timing giống DemoWplace.js
           
@@ -573,7 +585,7 @@
           console.log("✅ Auto-refresh CAPTCHA completed successfully");
           return true;
         } else {
-          console.error("❌ Cannot find confirm button");
+          console.error("❌ Cannot find confirm button after 10s timeout");
           return false;
         }
         
@@ -584,14 +596,21 @@
       }
     },
 
-    // Hàm đợi element xuất hiện
+    // Hàm đợi element xuất hiện và clickable
     waitForSelector: async (selector, interval = 200, timeout = 5000) => {
       const start = Date.now();
       while (Date.now() - start < timeout) {
         const el = document.querySelector(selector);
-        if (el && el.offsetParent !== null) return el; // Đảm bảo element visible
+        if (el && el.offsetParent !== null && !el.disabled) {
+          // Đảm bảo element visible, not disabled, và có thể click
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            return el;
+          }
+        }
         await Utils.sleep(interval);
       }
+      console.log(`⚠️ Timeout waiting for selector: ${selector}`);
       return null;
     },
 
