@@ -76,6 +76,7 @@
       autoRefreshFailed: "❌ Falha no auto-refresh CAPTCHA",
       selectingTransparent: "Selecionando transparente...",
       confirmingPaint: "Confirmando pintura...",
+      autoRefreshWarning: "⚠️ Chưa có CAPTCHA token, nhưng Auto-Refresh đã bật. Bot sẽ tự động lấy token khi cần!",
     },
     en: {
       title: "WPlace Auto-Image",
@@ -133,6 +134,7 @@
       autoRefreshFailed: "❌ Auto-refresh CAPTCHA failed",
       selectingTransparent: "Selecting transparent...",
       confirmingPaint: "Confirming paint...",
+      autoRefreshWarning: "⚠️ No CAPTCHA token yet, but Auto-Refresh is enabled. Bot will auto-capture token when needed!",
     },
   };
 
@@ -1366,19 +1368,21 @@
       // Update button states based on requirements
       const startBtn = document.querySelector("#startBtn");
       if (startBtn) {
-        const canStart = requirements.uploadImage && requirements.selectPosition && 
-                        (requirements.captchaToken || state.autoRefresh);
+        const canStart = requirements.uploadImage && requirements.selectPosition;
         startBtn.disabled = !canStart;
         
         if (!canStart) {
           let missing = [];
           if (!requirements.uploadImage) missing.push("Upload Image");
           if (!requirements.selectPosition) missing.push("Select Position");
-          if (!requirements.captchaToken && !state.autoRefresh) missing.push("CAPTCHA Token");
           
           startBtn.title = `Missing: ${missing.join(", ")}`;
+        } else if (!requirements.captchaToken && !state.autoRefresh) {
+          startBtn.title = "⚠️ No CAPTCHA token - click a pixel first or enable Auto-Refresh";
+        } else if (!requirements.captchaToken && state.autoRefresh) {
+          startBtn.title = "🔄 Ready to start! Auto-Refresh will capture CAPTCHA token when needed";
         } else {
-          startBtn.title = "Ready to start painting!";
+          startBtn.title = "✅ Ready to start painting!";
         }
       }
       
@@ -1714,23 +1718,10 @@
         console.log("❌ Missing CAPTCHA token");
         
         if (state.autoRefresh) {
-          console.log("🔄 Auto-Refresh enabled, attempting to get CAPTCHA token...");
-          updateUI("autoRefreshStarting", "default");
-          
-          const refreshSuccess = await Utils.autoRefreshCaptcha();
-          if (refreshSuccess && capturedCaptchaToken) {
-            console.log("✅ CAPTCHA token obtained via auto-refresh");
-            updateUI("autoRefreshComplete", "success");
-            Utils.showAlert(Utils.t("autoRefreshComplete"), "success");
-            // Continue with starting the bot
-          } else {
-            const message = state.language === "pt" 
-              ? "❌ Auto-refresh thất bại. Hãy click một pixel thủ công để lấy token!"
-              : "❌ Auto-refresh failed. Please click a pixel manually to get token!";
-            updateUI("autoRefreshFailed", "error");
-            Utils.showAlert(message, "error");
-            return;
-          }
+          console.log("🔄 Auto-Refresh enabled - bot will start and auto-refresh when needed");
+          updateUI("captchaNeeded", "warning");
+          Utils.showAlert(Utils.t("autoRefreshWarning"), "warning");
+          // Tiếp tục start bot - sẽ auto-refresh khi gặp token_error
         } else {
           const message = state.language === "pt" 
             ? "❌ Cần CAPTCHA token. Hãy click một pixel bất kỳ trên canvas để lấy token, hoặc bật Auto-Refresh để tự động lấy!"
