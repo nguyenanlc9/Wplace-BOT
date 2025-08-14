@@ -1583,7 +1583,7 @@
           Utils.showAlert(Utils.t("dataLoaded"), "success");
           
           // Enable appropriate buttons
-          saveBtn.disabled = false;
+          exportPixelBtn.disabled = false;  // Enable Export Pixels button
           
           // Show init button if colors not checked yet
           if (!state.colorsChecked) {
