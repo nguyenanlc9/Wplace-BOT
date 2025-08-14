@@ -496,6 +496,17 @@
             <span>${state.language === 'pt' ? 'Export' : 'Export'}</span>
           </button>
         </div>
+        
+        <div class="wplace-controls" style="margin-top: 10px;">
+          <button id="exportProfileBtn" class="wplace-btn wplace-btn-primary" title="${state.language === 'pt' ? 'Exportar dados do profile' : 'Export profile data'}">
+            <i class="fas fa-user-export"></i>
+            <span>${state.language === 'pt' ? 'Export Profile' : 'Export Profile'}</span>
+          </button>
+          <button id="importProfileBtn" class="wplace-btn wplace-btn-primary" title="${state.language === 'pt' ? 'Importar dados do profile' : 'Import profile data'}">
+            <i class="fas fa-user-plus"></i>
+            <span>${state.language === 'pt' ? 'Import Profile' : 'Import Profile'}</span>
+          </button>
+        </div>
       </div>
     `;
     
@@ -589,6 +600,44 @@
     
     exportBtn.addEventListener('click', () => {
       exportStats();
+    });
+    
+    // Thêm event listeners cho Export/Import Profile
+    const exportProfileBtn = panel.querySelector('#exportProfileBtn');
+    const importProfileBtn = panel.querySelector('#importProfileBtn');
+    
+    exportProfileBtn.addEventListener('click', () => {
+      exportProfileData();
+    });
+    
+    importProfileBtn.addEventListener('click', async () => {
+      try {
+        const profileData = await importProfileData();
+        if (!profileData) {
+          updateUI(state.language === 'pt' ? '❌ Nenhum arquivo selecionado' : '❌ No file selected', 'warning');
+          return;
+        }
+        
+        // Show confirmation dialog with file info
+        const confirmImport = confirm(
+          `${state.language === 'pt' ? 'Importar dados do profile?' : 'Import profile data?'}\n\n` +
+          `Export time: ${profileData.exportTime}\n` +
+          `Painted pixels: ${profileData.state?.paintedCount || 0}\n` +
+          `Source: ${profileData.metadata?.exportSource || 'Unknown'}\n\n` +
+          `${state.language === 'pt' ? 'Deseja continuar?' : 'Do you want to continue?'}`
+        );
+        
+        if (confirmImport) {
+          const success = restoreProfileData(profileData);
+          if (success) {
+            // Refresh UI after successful import
+            updateStats();
+          }
+        }
+      } catch (error) {
+        console.error("Import profile error:", error);
+        updateUI(state.language === 'pt' ? '❌ Erro ao importar profile' : '❌ Error importing profile', 'error');
+      }
     });
     
     window.addEventListener('beforeunload', () => {
@@ -705,6 +754,124 @@
     URL.revokeObjectURL(url);
     
     updateUI(state.language === 'pt' ? '📊 Estatísticas exportadas!' : '📊 Stats exported!', 'success');
+  };
+
+  // Thêm chức năng export profile data để chuyển giữa các profile
+  const exportProfileData = () => {
+    try {
+      const profileData = {
+        version: "2.0",
+        type: "wplace_profile_data",
+        timestamp: Date.now(),
+        exportTime: new Date().toISOString(),
+        config: CONFIG,
+        state: {
+          paintedCount: state.paintedCount,
+          language: state.language,
+          autoRefresh: state.autoRefresh,
+          lastPixel: state.lastPixel,
+          charges: state.charges,
+          userInfo: state.userInfo
+        },
+        metadata: {
+          exportSource: "DEMO_WPLACE_BOT",
+          totalRuntime: Date.now() - (window.startTime || Date.now())
+        }
+      };
+      
+      const dataStr = JSON.stringify(profileData, null, 2);
+      const dataBlob = new Blob([dataStr], {type: 'application/json'});
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `wplace-profile-${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      updateUI(state.language === 'pt' ? '💾 Dados do profile exportados!' : '💾 Profile data exported!', 'success');
+      return true;
+    } catch (error) {
+      console.error('❌ Error exporting profile data:', error);
+      updateUI(state.language === 'pt' ? '❌ Erro ao exportar dados do profile' : '❌ Error exporting profile data', 'error');
+      return false;
+    }
+  };
+
+  const importProfileData = () => {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = (event) => {
+        const file = event.target.files[0];
+        if (!file) {
+          resolve(null);
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const profileData = JSON.parse(e.target.result);
+            
+            // Validate data structure
+            if (!profileData.version || !profileData.type || 
+                (profileData.type !== "wplace_profile_data" && profileData.type !== "wplace_pixel_data")) {
+              throw new Error("Invalid profile data file format");
+            }
+            
+            resolve(profileData);
+          } catch (error) {
+            console.error('❌ Error parsing profile data file:', error);
+            resolve(null);
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    });
+  };
+
+  const restoreProfileData = (profileData) => {
+    try {
+      if (!profileData) {
+        return false;
+      }
+      
+      // Restore config if available
+      if (profileData.config) {
+        Object.assign(CONFIG, profileData.config);
+      }
+      
+      // Restore state data
+      if (profileData.state) {
+        state.paintedCount = profileData.state.paintedCount || 0;
+        state.language = profileData.state.language || 'en';
+        state.autoRefresh = profileData.state.autoRefresh !== undefined ? profileData.state.autoRefresh : true;
+        state.lastPixel = profileData.state.lastPixel || null;
+        state.charges = profileData.state.charges || state.charges;
+        state.userInfo = profileData.state.userInfo || state.userInfo;
+        
+        // Update checkbox state
+        const autoRefreshCheckbox = document.querySelector('#autoRefreshCheckbox');
+        if (autoRefreshCheckbox) {
+          autoRefreshCheckbox.checked = state.autoRefresh;
+        }
+      }
+      
+      // Update UI to reflect restored state
+      updateStats();
+      
+      updateUI(state.language === 'pt' ? '✅ Dados do profile importados!' : '✅ Profile data imported!', 'success');
+      return true;
+    } catch (error) {
+      console.error('❌ Error restoring profile data:', error);
+      updateUI(state.language === 'pt' ? '❌ Erro ao restaurar dados do profile' : '❌ Error restoring profile data', 'error');
+      return false;
+    }
   };
 
   window.updateStats = async () => {
