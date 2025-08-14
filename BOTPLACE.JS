@@ -130,27 +130,28 @@
       },
     };
   
-    // GLOBAL STATE
-    const state = {
-      running: false,
-      imageLoaded: false,
-      processing: false,
-      totalPixels: 0,
-      paintedPixels: 0,
-      availableColors: [],
-      currentCharges: 0,
-      cooldown: CONFIG.COOLDOWN_DEFAULT,
-      imageData: null,
-      stopFlag: false,
-      colorsChecked: false,
-      startPosition: null,
-      selectingPosition: false,
-      region: null,
-      minimized: false,
-      lastPosition: { x: 0, y: 0 },
-      estimatedTime: 0,
-      language: "en",
-    };
+      // GLOBAL STATE
+  const state = {
+    running: false,
+    imageLoaded: false,
+    processing: false,
+    totalPixels: 0,
+    paintedPixels: 0,
+    availableColors: [],
+    currentCharges: 0,
+    cooldown: CONFIG.COOLDOWN_DEFAULT,
+    imageData: null,
+    stopFlag: false,
+    colorsChecked: false,
+    startPosition: null,
+    selectingPosition: false,
+    region: null,
+    minimized: false,
+    lastPosition: { x: 0, y: 0 },
+    estimatedTime: 0,
+    language: "en",
+    lastAutoRefresh: 0, // THÊM: Timestamp của lần auto-refresh cuối
+  };
   
     // Global variable to store the captured CAPTCHA token.
     let capturedCaptchaToken = null;
@@ -1204,12 +1205,14 @@
         statusText.style.animation = "slideIn 0.3s ease-out";
       };
   
-      window.updateStats = async () => {
+            window.updateStats = async () => {
         if (!state.colorsChecked || !state.imageLoaded) return;
-  
+
         const { charges, cooldown } = await WPlaceService.getCharges();
         state.currentCharges = Math.floor(charges);
         state.cooldown = cooldown;
+        
+        console.log(`⚡ Charges updated: ${state.currentCharges} (batch size will be: ${Math.floor(state.currentCharges)})`);
   
         const progress =
           state.totalPixels > 0
@@ -1775,12 +1778,26 @@
             });
   
             if (pixelBatch.length >= Math.floor(state.currentCharges)) {
+              console.log(`🎨 Sending batch: ${pixelBatch.length} pixels (charges: ${state.currentCharges})`);
               const success = await sendPixelBatch(pixelBatch, regionX, regionY);
-  
-              // THÊM: Auto-refresh CAPTCHA khi gặp token_error
+
               if (success === "token_error") {
+                const now = Date.now();
+                const timeSinceLastRefresh = now - state.lastAutoRefresh;
+                const REFRESH_COOLDOWN = 30000; // 30 giây cooldown
+                
+                // Kiểm tra cooldown trước khi auto-refresh
+                if (timeSinceLastRefresh < REFRESH_COOLDOWN) {
+                  console.log(`🔄 Auto-refresh on cooldown. Wait ${Math.ceil((REFRESH_COOLDOWN - timeSinceLastRefresh) / 1000)}s more`);
+                  state.stopFlag = true;
+                  updateUI("captchaNeeded", "error");
+                  Utils.showAlert(Utils.t("captchaNeeded"), "error");
+                  break outerLoop;
+                }
+                
                 console.log("🔄 CAPTCHA token expired, attempting auto-refresh...");
                 updateUI("autoRefreshStarting", "warning");
+                state.lastAutoRefresh = now;
                 
                 // Thử auto-refresh CAPTCHA
                 const refreshSuccess = await Utils.autoRefreshCaptcha();
@@ -1799,10 +1816,10 @@
                   }
                 }
                 
-                // Nếu auto-refresh thất bại, dừng bot
+                // Nếu auto-refresh thất bại, dừng bot như SRC.JS gốc
                 state.stopFlag = true;
-                updateUI("autoRefreshFailed", "error");
-                Utils.showAlert(Utils.t("autoRefreshFailed"), "error");
+                updateUI("captchaNeeded", "error");
+                Utils.showAlert(Utils.t("captchaNeeded"), "error");
                 break outerLoop;
               }
   
