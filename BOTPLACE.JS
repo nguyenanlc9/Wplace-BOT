@@ -1476,6 +1476,17 @@
                </div>
                
                <div class="wplace-controls-row">
+                 <button id="startBtn2" class="wplace-btn wplace-btn-start" disabled>
+                   <i class="fas fa-play"></i>
+                   <span>Start 2</span>
+                 </button>
+                 <button id="startBtn3" class="wplace-btn wplace-btn-start" disabled>
+                   <i class="fas fa-play"></i>
+                   <span>Start 3</span>
+                 </button>
+               </div>
+               
+               <div class="wplace-controls-row">
                  <button id="saveBtn" class="wplace-btn wplace-btn-primary" disabled>
                    <i class="fas fa-save"></i>
                    <span>Save</span>
@@ -1766,6 +1777,8 @@
       const resizeBtn = container.querySelector("#resizeBtn");
       const selectPosBtn = container.querySelector("#selectPosBtn");
       const startBtn = container.querySelector("#startBtn");
+      const startBtn2 = container.querySelector("#startBtn2");
+      const startBtn3 = container.querySelector("#startBtn3");
       const stopBtn = container.querySelector("#stopBtn");
       const saveBtn = container.querySelector("#saveBtn");
       const loadBtn = container.querySelector("#loadBtn");
@@ -2138,6 +2151,8 @@
   
           if (state.startPosition) {
             startBtn.disabled = false;
+            startBtn2.disabled = false;
+            startBtn3.disabled = false;
           }
   
           updateStats();
@@ -2160,6 +2175,8 @@
         state.startPosition = null;
         state.region = null;
         startBtn.disabled = true;
+        startBtn2.disabled = true;
+        startBtn3.disabled = true;
   
         Utils.showAlert(Utils.t("selectPositionAlert"), "info");
         updateUI("waitingPosition", "default");
@@ -2196,6 +2213,8 @@
   
                   if (state.imageLoaded) {
                     startBtn.disabled = false;
+                    startBtn2.disabled = false;
+                    startBtn3.disabled = false;
                   }
   
                   window.fetch = originalFetch;
@@ -2237,6 +2256,8 @@
          state.stopFlag = false;
          state.startTime = Date.now(); // Set start time
          startBtn.disabled = true;
+         startBtn2.disabled = true;
+         startBtn3.disabled = true;
          stopBtn.disabled = false;
          uploadBtn.disabled = true;
          selectPosBtn.disabled = true;
@@ -2256,11 +2277,15 @@
   
           if (!state.stopFlag) {
             startBtn.disabled = true;
+            startBtn2.disabled = true;
+            startBtn3.disabled = true;
             uploadBtn.disabled = false;
             selectPosBtn.disabled = false;
             resizeBtn.disabled = false;
           } else {
             startBtn.disabled = false;
+            startBtn2.disabled = false;
+            startBtn3.disabled = false;
           }
         }
       });
@@ -2275,6 +2300,108 @@
         if (state.imageLoaded && state.paintedPixels > 0) {
           Utils.saveProgress();
           Utils.showAlert(Utils.t("autoSaved"), "success");
+        }
+      });
+
+      // THÊM: Start Button 2 Event Listener (Alternative start method)
+      startBtn2.addEventListener("click", async () => {
+        if (!state.imageLoaded || !state.startPosition || !state.region) {
+          updateUI("missingRequirements", "error");
+          return;
+        }
+        if (!capturedCaptchaToken) {
+          updateUI("captchaNeeded", "error");
+          Utils.showAlert(Utils.t("captchaNeeded"), "error");
+          return;
+        }
+
+        state.running = true;
+        state.stopFlag = false;
+        state.startTime = Date.now(); // Set start time
+        startBtn.disabled = true;
+        startBtn2.disabled = true;
+        startBtn3.disabled = true;
+        stopBtn.disabled = false;
+        uploadBtn.disabled = true;
+        selectPosBtn.disabled = true;
+        resizeBtn.disabled = true;
+        saveBtn.disabled = true;
+
+        updateUI("startPaintingMsg", "success");
+
+        try {
+          await processImage();
+        } catch (error) {
+          console.error("Start 2 error:", error);
+          updateUI("paintingError", "error");
+        } finally {
+          state.running = false;
+          stopBtn.disabled = true;
+          saveBtn.disabled = false;
+
+          if (!state.stopFlag) {
+            startBtn.disabled = true;
+            startBtn2.disabled = true;
+            startBtn3.disabled = true;
+            uploadBtn.disabled = false;
+            selectPosBtn.disabled = false;
+            resizeBtn.disabled = false;
+          } else {
+            startBtn.disabled = false;
+            startBtn2.disabled = false;
+            startBtn3.disabled = false;
+          }
+        }
+      });
+
+      // THÊM: Start Button 3 Event Listener (Alternative start method)
+      startBtn3.addEventListener("click", async () => {
+        if (!state.imageLoaded || !state.startPosition || !state.region) {
+          updateUI("missingRequirements", "error");
+          return;
+        }
+        if (!capturedCaptchaToken) {
+          updateUI("captchaNeeded", "error");
+          Utils.showAlert(Utils.t("captchaNeeded"), "error");
+          return;
+        }
+
+        state.running = true;
+        state.stopFlag = false;
+        state.startTime = Date.now(); // Set start time
+        startBtn.disabled = true;
+        startBtn2.disabled = true;
+        startBtn3.disabled = true;
+        stopBtn.disabled = false;
+        uploadBtn.disabled = true;
+        selectPosBtn.disabled = true;
+        resizeBtn.disabled = true;
+        saveBtn.disabled = true;
+
+        updateUI("startPaintingMsg", "success");
+
+        try {
+          await processImage();
+        } catch (error) {
+          console.error("Start 3 error:", error);
+          updateUI("paintingError", "error");
+        } finally {
+          state.running = false;
+          stopBtn.disabled = true;
+          saveBtn.disabled = false;
+
+          if (!state.stopFlag) {
+            startBtn.disabled = true;
+            startBtn2.disabled = true;
+            startBtn3.disabled = true;
+            uploadBtn.disabled = false;
+            selectPosBtn.disabled = false;
+            resizeBtn.disabled = false;
+          } else {
+            startBtn.disabled = false;
+            startBtn2.disabled = false;
+            startBtn3.disabled = false;
+          }
         }
       });
   
@@ -2325,6 +2452,8 @@
             
             if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
               startBtn.disabled = false;
+              startBtn2.disabled = false;
+              startBtn3.disabled = false;
             }
           } else {
             Utils.showAlert("❌ Erro ao carregar progresso", "error");
@@ -2407,6 +2536,8 @@
               
               if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
                 startBtn.disabled = false;
+                startBtn2.disabled = false;
+                startBtn3.disabled = false;
               }
             } else {
               console.error("❌ Failed to restore progress");
@@ -2505,6 +2636,8 @@
                 
                 if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
                   startBtn.disabled = false;
+                  startBtn2.disabled = false;
+                  startBtn3.disabled = false;
                 }
               } else {
                 Utils.showAlert(`❌ Error loading from slot ${slot}`, "error");
@@ -2729,8 +2862,20 @@
 
               if (success === "token_error") {
                 state.stopFlag = true;
+                state.running = false;
                 updateUI("captchaNeeded", "error");
                 Utils.showAlert(Utils.t("captchaNeeded"), "error");
+                
+                // Re-enable start buttons and other controls after CAPTCHA error
+                startBtn.disabled = false;
+                startBtn2.disabled = false;
+                startBtn3.disabled = false;
+                stopBtn.disabled = true;
+                uploadBtn.disabled = false;
+                selectPosBtn.disabled = false;
+                resizeBtn.disabled = false;
+                saveBtn.disabled = false;
+                
                 break outerLoop;
               }
   
