@@ -173,11 +173,12 @@
     estimatedTime: 0,
     language: "en",
     lastAutoRefresh: 0, // THÊM: Timestamp của lần auto-refresh cuối
-    autoSync: true, // THÊM: Auto-sync enabled
-    syncInterval: 5, // THÊM: Sync every 5 seconds
-    currentSlot: 1, // THÊM: Current active slot
-    ipAddress: null, // THÊM: IP address
-    profileId: null, // THÊM: Unique profile ID
+         autoSync: true, // THÊM: Auto-sync enabled
+     syncInterval: 5, // THÊM: Sync every 5 seconds
+     currentSlot: 1, // THÊM: Current active slot
+     ipAddress: null, // THÊM: IP address
+     profileId: null, // THÊM: Unique profile ID
+     multiIpSync: true, // THÊM: Allow sync between different IPs
   };
   
     // Global variable to store the captured CAPTCHA token.
@@ -649,19 +650,20 @@
         console.log('👂 Sync listener started - will receive updates from other profiles (IP: ' + state.ipAddress + ')');
       },
 
-      // THÊM: Process sync data (common function) - ƯU TIÊN PROFILE CÓ PROGRESS CAO NHẤT
-      processSyncData: (syncData) => {
-        try {
-          // Kiểm tra IP và slot
-          if (syncData.type === 'wplace_sync' && 
-              syncData.sourceSlot === state.currentSlot &&
-              syncData.ipAddress === state.ipAddress &&
-              syncData.profileId !== state.profileId) {
+             // THÊM: Process sync data (common function) - ƯU TIÊN PROFILE CÓ PROGRESS CAO NHẤT
+       processSyncData: (syncData) => {
+         try {
+           // Kiểm tra slot và profile (cho phép sync giữa các IP khác nhau nếu bật multiIpSync)
+           const ipMatch = state.multiIpSync || syncData.ipAddress === state.ipAddress;
+           if (syncData.type === 'wplace_sync' && 
+               syncData.sourceSlot === state.currentSlot &&
+               ipMatch &&
+               syncData.profileId !== state.profileId) {
             
-            console.log(`📥 Received sync from ${syncData.profileId} (IP: ${syncData.ipAddress}): ${syncData.progress.paintedPixels}/${syncData.progress.totalPixels} pixels`);
-            
-            // Update current progress if we're on the same project
-            if (state.imageLoaded && state.totalPixels === syncData.progress.totalPixels) {
+                         console.log(`📥 Received sync from ${syncData.profileId} (IP: ${syncData.ipAddress}): ${syncData.progress.paintedPixels}/${syncData.progress.totalPixels} pixels`);
+             
+             // Update current progress if we're on the same project (cho phép sync giữa IP khác nhau)
+             if (state.imageLoaded && state.totalPixels === syncData.progress.totalPixels) {
               const oldPainted = state.paintedPixels;
               
               // LUÔN LUÔN sync nếu profile khác có progress cao hơn
@@ -722,23 +724,24 @@
         
         // Poll localhost server với interval bằng 1/2 sync interval để nhận sync từ profiles khác
         const pollInterval = Math.max(5, Math.floor(state.syncInterval / 2)); // Tối thiểu 5s, tối đa 1/2 sync interval
-        window.networkInterval = setInterval(async () => {
-          if (state.autoSync && state.imageLoaded) {
-            try {
-              const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
-              if (response.ok) {
-                const syncData = await response.json();
-                if (syncData && syncData.length > 0) {
-                  console.log(`📥 Received ${syncData.length} sync entries from server`);
-                  syncData.forEach(data => Utils.processSyncData(data));
-                }
-              }
-            } catch (error) {
-              // Fallback to localStorage only
-              console.log('🌐 Localhost polling failed: ' + error.message);
-            }
-          }
-        }, pollInterval * 1000); // Poll with configurable interval
+                 window.networkInterval = setInterval(async () => {
+           if (state.autoSync && state.imageLoaded) {
+             try {
+               const multiIpParam = state.multiIpSync ? '&multiIp=true' : '';
+               const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}${multiIpParam}`);
+               if (response.ok) {
+                 const syncData = await response.json();
+                 if (syncData && syncData.length > 0) {
+                   console.log(`📥 Received ${syncData.length} sync entries from server`);
+                   syncData.forEach(data => Utils.processSyncData(data));
+                 }
+               }
+             } catch (error) {
+               // Fallback to localStorage only
+               console.log('🌐 Localhost polling failed: ' + error.message);
+             }
+           }
+         }, pollInterval * 1000); // Poll with configurable interval
         
         console.log(`🌐 Localhost listener started - polling for updates from other profiles every ${pollInterval}s`);
       },
@@ -778,10 +781,11 @@
       checkInitialSync: async () => {
         if (!state.autoSync || !state.imageLoaded) return;
         
-        try {
-          console.log('🔍 Checking for existing sync data on startup...');
-          const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
-          if (response.ok) {
+                 try {
+           console.log('🔍 Checking for existing sync data on startup...');
+           const multiIpParam = state.multiIpSync ? '&multiIp=true' : '';
+           const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}${multiIpParam}`);
+           if (response.ok) {
             const syncData = await response.json();
             if (syncData && syncData.length > 0) {
               console.log(`📥 Found ${syncData.length} existing sync entries on startup`);
@@ -1487,23 +1491,31 @@
             </button>
           </div>
           
-          <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
-            <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
-              <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
-              <i class="fas fa-sync"></i>
-              <span>${Utils.t("autoSync")}</span>
-            </label>
-            <div style="display: flex; align-items: center; gap: 5px;">
-              <span style="color: ${CONFIG.THEME.text}; font-size: 12px;">Slot:</span>
-              <select id="currentSlotSelect" style="background: ${CONFIG.THEME.secondary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 4px; padding: 2px 5px;">
-                <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
-                <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
-                <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
-                <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
-                <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
-              </select>
-            </div>
-          </div>
+                     <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
+             <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
+               <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+               <i class="fas fa-sync"></i>
+               <span>${Utils.t("autoSync")}</span>
+             </label>
+             <div style="display: flex; align-items: center; gap: 5px;">
+               <span style="color: ${CONFIG.THEME.text}; font-size: 12px;">Slot:</span>
+               <select id="currentSlotSelect" style="background: ${CONFIG.THEME.secondary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 4px; padding: 2px 5px;">
+                 <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
+                 <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
+                 <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
+                 <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
+                 <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
+               </select>
+             </div>
+           </div>
+           
+           <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
+             <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
+               <input type="checkbox" id="multiIpSyncCheckbox" ${state.multiIpSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+               <i class="fas fa-globe"></i>
+               <span style="font-size: 12px;">Multi-IP Sync</span>
+             </label>
+           </div>
           
           <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text};">
@@ -1625,8 +1637,9 @@
       const saveSlotBtn = container.querySelector("#saveSlotBtn");
       const loadSlotBtn = container.querySelector("#loadSlotBtn");
       const loadSyncBtn = container.querySelector("#loadSyncBtn");
-      const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
-      const currentSlotSelect = container.querySelector("#currentSlotSelect");
+             const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
+       const currentSlotSelect = container.querySelector("#currentSlotSelect");
+       const multiIpSyncCheckbox = container.querySelector("#multiIpSyncCheckbox");
       const minimizeBtn = container.querySelector("#minimizeBtn");
       const statusText = container.querySelector("#statusText");
       const progressBar = container.querySelector("#progressBar");
@@ -2268,12 +2281,13 @@
             await Utils.detectNetworkInfo();
           }
           
-          // Force check for sync data from server
-          if (state.autoSync && state.imageLoaded) {
-            console.log('🔍 Checking for sync data from server...');
-            const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}`);
-            
-            if (response.ok) {
+                     // Force check for sync data from server
+           if (state.autoSync && state.imageLoaded) {
+             console.log('🔍 Checking for sync data from server...');
+             const multiIpParam = state.multiIpSync ? '&multiIp=true' : '';
+             const response = await fetch(`http://localhost:3000/poll?ip=${state.ipAddress}&slot=${state.currentSlot}&profile=${state.profileId}${multiIpParam}`);
+             
+             if (response.ok) {
               const syncData = await response.json();
               if (syncData && syncData.length > 0) {
                 console.log(`📥 Found ${syncData.length} sync entries from manual check`);
@@ -2328,20 +2342,32 @@
         }
       });
 
-      // THÊM: Current Slot Select Event Listener
-      currentSlotSelect.addEventListener("change", () => {
-        const newSlot = parseInt(currentSlotSelect.value);
-        if (newSlot >= 1 && newSlot <= 5) {
-          state.currentSlot = newSlot;
-          console.log(`📍 Current slot changed to: ${state.currentSlot}`);
-          
-          // Auto-save current progress to new slot
-          if (state.imageLoaded) {
-            Utils.autoSaveCurrentSlot();
-            Utils.showAlert(`📍 Now using slot ${state.currentSlot}`, "info");
-          }
-        }
-      });
+             // THÊM: Current Slot Select Event Listener
+       currentSlotSelect.addEventListener("change", () => {
+         const newSlot = parseInt(currentSlotSelect.value);
+         if (newSlot >= 1 && newSlot <= 5) {
+           state.currentSlot = newSlot;
+           console.log(`📍 Current slot changed to: ${state.currentSlot}`);
+           
+           // Auto-save current progress to new slot
+           if (state.imageLoaded) {
+             Utils.autoSaveCurrentSlot();
+             Utils.showAlert(`📍 Now using slot ${state.currentSlot}`, "info");
+           }
+         }
+       });
+
+       // THÊM: Multi-IP Sync Checkbox Event Listener
+       multiIpSyncCheckbox.addEventListener("change", () => {
+         state.multiIpSync = multiIpSyncCheckbox.checked;
+         console.log(`🌐 Multi-IP sync ${state.multiIpSync ? 'enabled' : 'disabled'}`);
+         
+         if (state.multiIpSync) {
+           Utils.showAlert("🌐 Multi-IP sync enabled - will sync with profiles from different IPs", "success");
+         } else {
+           Utils.showAlert("🌐 Multi-IP sync disabled - will only sync with same IP", "warning");
+         }
+       });
 
       // THÊM: Sync Interval Select Event Listener
       const syncIntervalSelect = container.querySelector("#syncIntervalSelect");

@@ -66,17 +66,30 @@ app.post('/sync', (req, res) => {
 
 app.get('/poll', (req, res) => {
   try {
-    const { ip, slot, profile } = req.query;
+    const { ip, slot, profile, multiIp } = req.query;
     
     if (!ip || !slot || !profile) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
-    const syncKey = `${ip}_${slot}`;
-    const data = syncData[syncKey] || [];
+    let allData = [];
+
+    if (multiIp === 'true') {
+      // Poll tất cả IP cho cùng slot
+      Object.keys(syncData).forEach(syncKey => {
+        const [dataIp, dataSlot] = syncKey.split('_');
+        if (dataSlot === slot) {
+          allData = allData.concat(syncData[syncKey] || []);
+        }
+      });
+    } else {
+      // Chỉ poll cùng IP
+      const syncKey = `${ip}_${slot}`;
+      allData = syncData[syncKey] || [];
+    }
 
     // Filter out data from the same profile and return only recent data
-    const filteredData = data.filter(entry => 
+    const filteredData = allData.filter(entry => 
       entry.profileId !== profile && 
       Date.now() - entry.timestamp < 60000 // Return data from last 60 seconds (longer window)
     );
@@ -89,7 +102,8 @@ app.get('/poll', (req, res) => {
     });
 
     if (filteredData.length > 0) {
-      console.log(`📤 Poll response for ${profile} (IP: ${ip}, Slot: ${slot}): ${filteredData.length} entries, highest progress: ${filteredData[0].progress?.paintedPixels || 0}`);
+      const mode = multiIp === 'true' ? 'Multi-IP' : 'Same-IP';
+      console.log(`📤 ${mode} poll response for ${profile} (IP: ${ip}, Slot: ${slot}): ${filteredData.length} entries, highest progress: ${filteredData[0].progress?.paintedPixels || 0}`);
     }
 
     res.json(filteredData);
