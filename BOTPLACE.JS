@@ -81,9 +81,6 @@
         autoSyncDisabled: "❌ Auto-sync desabilitado",
         syncInterval: "Sincronizar a cada {seconds}s",
         realTimeSave: "Salvamento em Tempo Real",
-        autoRefreshStarting: "🔄 Iniciando auto-refresh CAPTCHA...",
-        autoRefreshComplete: "✅ Auto-refresh CAPTCHA concluído com sucesso!",
-        autoRefreshFailed: "❌ Auto-refresh CAPTCHA falhou",
       },
       en: {
         title: "WPlace Auto-Image",
@@ -146,9 +143,6 @@
         autoSyncDisabled: "❌ Auto-sync disabled", 
         syncInterval: "Sync every {seconds}s",
         realTimeSave: "Real-time Save",
-        autoRefreshStarting: "🔄 Starting auto-refresh CAPTCHA...",
-        autoRefreshComplete: "✅ Auto-refresh CAPTCHA completed successfully!",
-        autoRefreshFailed: "❌ Auto-refresh CAPTCHA failed",
       },
     };
   
@@ -172,7 +166,6 @@
          lastPosition: { x: 0, y: 0 },
          estimatedTime: 0,
          language: "en",
-         lastAutoRefresh: 0, // THÊM: Timestamp của lần auto-refresh cuối
          autoSync: true, // THÊM: Auto-sync enabled
          syncInterval: 5, // THÊM: Sync every 5 seconds
          currentSlot: 1, // THÊM: Current active slot
@@ -458,8 +451,7 @@
               imageData: state.imageData,
               availableColors: state.availableColors,
               colorsChecked: state.colorsChecked,
-              language: state.language,
-              lastAutoRefresh: state.lastAutoRefresh
+              language: state.language
             }
           };
           
@@ -915,105 +907,7 @@
         });
       },
 
-      // THÊM: Auto-refresh CAPTCHA function (từ DemoWplace.js)
-      autoRefreshCaptcha: async () => {
-        try {
-          console.log("🔄 Starting auto-refresh CAPTCHA process...");
-          updateUI("autoRefreshStarting", "default");
-          
-          // Bước 1: Click Paint button để mở bảng màu
-          const paintBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl');
-          if (!paintBtn) {
-            console.error("❌ Cannot find Paint button");
-            return false;
-          }
-          
-          console.log("✅ Found Paint button, clicking...");
-          paintBtn.click();
-          await Utils.sleep(500);
-          
-          // Bước 2: Chọn màu transparent (color-0)
-          const transBtn = await Utils.waitForSelector('button#color-0', 200, 5000);
-          if (!transBtn) {
-            console.error("❌ Cannot find transparent color button");
-            return false;
-          }
-          
-          console.log("✅ Found transparent button, clicking...");
-          transBtn.click();
-          await Utils.sleep(500);
-          
-          // Bước 3: Click vào canvas để trigger CAPTCHA
-          const canvas = await Utils.waitForSelector('canvas');
-          if (!canvas) {
-            console.error("❌ Cannot find canvas");
-            return false;
-          }
-          
-          canvas.setAttribute('tabindex', '0');
-          canvas.focus();
-          const rect = canvas.getBoundingClientRect();
-          const centerX = Math.round(rect.left + rect.width / 2);
-          const centerY = Math.round(rect.top + rect.height / 2);
-          
-          const moveEvt = new MouseEvent('mousemove', {
-            clientX: centerX,
-            clientY: centerY,
-            bubbles: true
-          });
-          canvas.dispatchEvent(moveEvt);
-          
-          const keyDown = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true });
-          const keyUp = new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true });
-          canvas.dispatchEvent(keyDown);
-          canvas.dispatchEvent(keyUp);
-          
-          await Utils.sleep(1000);
-          
-          // Bước 4: Click nút Paint để confirm
-          let confirmBtn = await Utils.waitForSelector('button.btn.btn-primary.btn-lg, button.btn.btn-primary.sm\\:btn-xl', 200, 10000);
-          
-          if (!confirmBtn) {
-            const allPrimary = Array.from(document.querySelectorAll('button.btn-primary'));
-            confirmBtn = allPrimary.length ? allPrimary[allPrimary.length - 1] : null;
-          }
-          
-          if (confirmBtn) {
-            console.log("✅ Found confirmation button, clicking...");
-            confirmBtn.click();
-            await Utils.sleep(1000);
-            
-            updateUI("autoRefreshComplete", "success");
-            console.log("✅ Auto-refresh CAPTCHA completed successfully");
-            return true;
-          } else {
-            console.error("❌ Cannot find confirm button");
-            return false;
-          }
-          
-        } catch (error) {
-          console.error("❌ Auto-refresh CAPTCHA failed:", error);
-          updateUI("autoRefreshFailed", "error");
-          return false;
-        }
-      },
 
-      // THÊM: Wait for selector helper
-      waitForSelector: async (selector, interval = 200, timeout = 5000) => {
-        const start = Date.now();
-        while (Date.now() - start < timeout) {
-          const el = document.querySelector(selector);
-          if (el && el.offsetParent !== null && !el.disabled) {
-            const rect = el.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              return el;
-            }
-          }
-          await Utils.sleep(interval);
-        }
-        console.log(`⚠️ Timeout waiting for selector: ${selector}`);
-        return null;
-      },
   
       showAlert: (message, type = "info") => {
         const alert = document.createElement("div");
@@ -2834,41 +2728,6 @@
               const success = await sendPixelBatch(pixelBatch, regionX, regionY);
 
               if (success === "token_error") {
-                const now = Date.now();
-                const timeSinceLastRefresh = now - state.lastAutoRefresh;
-                const REFRESH_COOLDOWN = 30000; // 30 giây cooldown
-                
-                // Kiểm tra cooldown trước khi auto-refresh
-                if (timeSinceLastRefresh < REFRESH_COOLDOWN) {
-                  console.log(`🔄 Auto-refresh on cooldown. Wait ${Math.ceil((REFRESH_COOLDOWN - timeSinceLastRefresh) / 1000)}s more`);
-                  state.stopFlag = true;
-                  updateUI("captchaNeeded", "error");
-                  Utils.showAlert(Utils.t("captchaNeeded"), "error");
-                  break outerLoop;
-                }
-                
-                console.log("🔄 CAPTCHA token expired, attempting auto-refresh...");
-                updateUI("autoRefreshStarting", "warning");
-                state.lastAutoRefresh = now;
-                
-                // Thử auto-refresh CAPTCHA
-                const refreshSuccess = await Utils.autoRefreshCaptcha();
-                
-                if (refreshSuccess) {
-                  // Đợi một chút để token được capture
-                  await Utils.sleep(2000);
-                  
-                  // Kiểm tra xem có token mới không
-                  if (capturedCaptchaToken) {
-                    updateUI("autoRefreshComplete", "success");
-                    Utils.showAlert(Utils.t("autoRefreshComplete"), "success");
-                    // Reset pixel batch để bắt đầu lại
-                    pixelBatch = [];
-                    continue; // Tiếp tục painting
-                  }
-                }
-                
-                // Nếu auto-refresh thất bại, dừng bot như SRC.JS gốc
                 state.stopFlag = true;
                 updateUI("captchaNeeded", "error");
                 Utils.showAlert(Utils.t("captchaNeeded"), "error");
