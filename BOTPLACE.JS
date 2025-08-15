@@ -153,33 +153,35 @@
     };
   
       // GLOBAL STATE
-  const state = {
-    running: false,
-    imageLoaded: false,
-    processing: false,
-    totalPixels: 0,
-    paintedPixels: 0,
-    availableColors: [],
-    currentCharges: 0,
-    cooldown: CONFIG.COOLDOWN_DEFAULT,
-    imageData: null,
-    stopFlag: false,
-    colorsChecked: false,
-    startPosition: null,
-    selectingPosition: false,
-    region: null,
-    minimized: false,
-    lastPosition: { x: 0, y: 0 },
-    estimatedTime: 0,
-    language: "en",
-    lastAutoRefresh: 0, // THÊM: Timestamp của lần auto-refresh cuối
+         const state = {
+         running: false,
+         imageLoaded: false,
+         processing: false,
+         totalPixels: 0,
+         paintedPixels: 0,
+         availableColors: [],
+         currentCharges: 0,
+         cooldown: CONFIG.COOLDOWN_DEFAULT,
+         imageData: null,
+         stopFlag: false,
+         colorsChecked: false,
+         startPosition: null,
+         selectingPosition: false,
+         region: null,
+         minimized: false,
+         lastPosition: { x: 0, y: 0 },
+         estimatedTime: 0,
+         language: "en",
+         lastAutoRefresh: 0, // THÊM: Timestamp của lần auto-refresh cuối
          autoSync: true, // THÊM: Auto-sync enabled
-     syncInterval: 5, // THÊM: Sync every 5 seconds
-     currentSlot: 1, // THÊM: Current active slot
-     ipAddress: null, // THÊM: IP address
-     profileId: null, // THÊM: Unique profile ID
-     multiIpSync: true, // THÊM: Allow sync between different IPs
-  };
+         syncInterval: 5, // THÊM: Sync every 5 seconds
+         currentSlot: 1, // THÊM: Current active slot
+         ipAddress: null, // THÊM: IP address
+         profileId: null, // THÊM: Unique profile ID
+         multiIpSync: true, // THÊM: Allow sync between different IPs
+         startTime: null, // THÊM: Timestamp khi bắt đầu painting
+         lastSyncTime: null, // THÊM: Timestamp của lần sync cuối
+   };
   
     // Global variable to store the captured CAPTCHA token.
     let capturedCaptchaToken = null;
@@ -546,38 +548,41 @@
         return false;
       },
 
-      // THÊM: Sync progress to all other profiles/tabs và theo IP
-      syncToAllProfiles: () => {
-        try {
-          // Broadcast current progress to other tabs/profiles
-          const syncData = {
-            type: 'wplace_sync',
-            timestamp: Date.now(),
-            sourceSlot: state.currentSlot,
-            profileId: state.profileId || 'unknown',
-            ipAddress: state.ipAddress || 'unknown',
-            progress: {
-              paintedPixels: state.paintedPixels,
-              totalPixels: state.totalPixels,
-              lastPosition: state.lastPosition,
-              paintedMap: state.paintedMap
-            }
-          };
-          
-          // Use localStorage events to sync between tabs cùng browser
-          localStorage.setItem('wplace-sync-broadcast', JSON.stringify(syncData));
-          localStorage.removeItem('wplace-sync-broadcast'); // Trigger storage event
-          
-          // THÊM: Sync qua WebSocket hoặc Server nếu có
-          Utils.syncToNetwork(syncData);
-          
-          console.log(`📡 Broadcasted progress: ${state.paintedPixels}/${state.totalPixels} pixels to other profiles (IP: ${state.ipAddress})`);
-          return true;
-        } catch (error) {
-          console.error('❌ Error syncing to other profiles:', error);
-          return false;
-        }
-      },
+             // THÊM: Sync progress to all other profiles/tabs và theo IP
+       syncToAllProfiles: () => {
+         try {
+           // Update last sync time
+           state.lastSyncTime = Date.now();
+           
+           // Broadcast current progress to other tabs/profiles
+           const syncData = {
+             type: 'wplace_sync',
+             timestamp: Date.now(),
+             sourceSlot: state.currentSlot,
+             profileId: state.profileId || 'unknown',
+             ipAddress: state.ipAddress || 'unknown',
+             progress: {
+               paintedPixels: state.paintedPixels,
+               totalPixels: state.totalPixels,
+               lastPosition: state.lastPosition,
+               paintedMap: state.paintedMap
+             }
+           };
+           
+           // Use localStorage events to sync between tabs cùng browser
+           localStorage.setItem('wplace-sync-broadcast', JSON.stringify(syncData));
+           localStorage.removeItem('wplace-sync-broadcast'); // Trigger storage event
+           
+           // THÊM: Sync qua WebSocket hoặc Server nếu có
+           Utils.syncToNetwork(syncData);
+           
+           console.log(`📡 Broadcasted progress: ${state.paintedPixels}/${state.totalPixels} pixels to other profiles (IP: ${state.ipAddress})`);
+           return true;
+         } catch (error) {
+           console.error('❌ Error syncing to other profiles:', error);
+           return false;
+         }
+       },
 
       // THÊM: Sync qua localhost server
       syncToNetwork: async (syncData) => {
@@ -606,34 +611,48 @@
         }
       },
 
-      // THÊM: Detect IP và Profile ID
-      detectNetworkInfo: async () => {
-        try {
-          // Detect IP address - sử dụng ipify.org thay vì ipapi.co (tránh lỗi 429)
-          const ipResponse = await fetch('https://api.ipify.org?format=json');
-          const ipData = await ipResponse.json();
-          state.ipAddress = ipData.ip;
-          
-          // Generate unique profile ID
-          state.profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          
-          console.log(`🌐 Network info: IP=${state.ipAddress}, Profile=${state.profileId}`);
-          return true;
-        } catch (error) {
-          console.error('❌ Error detecting network info:', error);
-          // Fallback IP detection
-          try {
-            const fallbackResponse = await fetch('https://httpbin.org/ip');
-            const fallbackData = await fallbackResponse.json();
-            state.ipAddress = fallbackData.origin;
-          } catch (fallbackError) {
-            state.ipAddress = 'unknown';
-          }
-          state.profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          console.log(`🌐 Fallback network info: IP=${state.ipAddress}, Profile=${state.profileId}`);
-          return false;
-        }
-      },
+             // THÊM: Detect IP và Profile ID
+       detectNetworkInfo: async () => {
+         try {
+           // Detect IP address - sử dụng ipify.org thay vì ipapi.co (tránh lỗi 429)
+           const ipResponse = await fetch('https://api.ipify.org?format=json');
+           const ipData = await ipResponse.json();
+           state.ipAddress = ipData.ip;
+           
+           // Generate unique profile ID
+           state.profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+           
+           console.log(`🌐 Network info: IP=${state.ipAddress}, Profile=${state.profileId}`);
+           
+           // Update sync tab if it's active
+           const activeTab = document.querySelector(".wplace-tab.active");
+           if (activeTab && activeTab.getAttribute("data-tab") === "sync") {
+             updateSyncTab();
+           }
+           
+           return true;
+         } catch (error) {
+           console.error('❌ Error detecting network info:', error);
+           // Fallback IP detection
+           try {
+             const fallbackResponse = await fetch('https://httpbin.org/ip');
+             const fallbackData = await fallbackResponse.json();
+             state.ipAddress = fallbackData.origin;
+           } catch (fallbackError) {
+             state.ipAddress = 'unknown';
+           }
+           state.profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+           console.log(`🌐 Fallback network info: IP=${state.ipAddress}, Profile=${state.profileId}`);
+           
+           // Update sync tab if it's active
+           const activeTab = document.querySelector(".wplace-tab.active");
+           if (activeTab && activeTab.getAttribute("data-tab") === "sync") {
+             updateSyncTab();
+           }
+           
+           return false;
+         }
+       },
 
       // THÊM: Listen for sync from other profiles (theo IP)
       startSyncListener: () => {
@@ -1203,7 +1222,7 @@
           position: fixed;
           top: 20px;
           left: 20px;
-          width: 280px;
+          width: 320px;
           background: ${CONFIG.THEME.primary};
           border: 1px solid ${CONFIG.THEME.accent};
           border-radius: 8px;
@@ -1227,6 +1246,47 @@
           cursor: move;
           user-select: none;
         }
+        
+        .wplace-tabs {
+          display: flex;
+          background: ${CONFIG.THEME.accent};
+          border-bottom: 1px solid ${CONFIG.THEME.accent};
+        }
+        
+        .wplace-tab {
+          flex: 1;
+          padding: 8px 12px;
+          background: ${CONFIG.THEME.secondary};
+          color: ${CONFIG.THEME.text};
+          border: none;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 600;
+          transition: all 0.2s;
+          border-right: 1px solid ${CONFIG.THEME.accent};
+        }
+        
+        .wplace-tab:last-child {
+          border-right: none;
+        }
+        
+        .wplace-tab.active {
+          background: ${CONFIG.THEME.highlight};
+          color: black;
+        }
+        
+        .wplace-tab:hover {
+          background: ${CONFIG.THEME.accent};
+        }
+        
+        .wplace-tab-content {
+          display: none;
+          padding: 12px;
+        }
+        
+        .wplace-tab-content.active {
+          display: block;
+        }
         .wplace-header-title {
           display: flex;
           align-items: center;
@@ -1248,7 +1308,6 @@
           opacity: 1;
         }
         .wplace-content {
-          padding: 12px;
           display: block;
         }
         .wplace-controls {
@@ -1316,6 +1375,33 @@
           padding: 8px;
           border-radius: 6px;
           margin-bottom: 10px;
+        }
+        
+        .wplace-progress-detail {
+          background: ${CONFIG.THEME.secondary};
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        }
+        
+        .wplace-progress-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 4px 0;
+          font-size: 12px;
+        }
+        
+        .wplace-progress-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          opacity: 0.8;
+        }
+        
+        .wplace-progress-value {
+          font-weight: 600;
+          color: ${CONFIG.THEME.highlight};
         }
         .wplace-stat-item {
           display: flex;
@@ -1429,154 +1515,284 @@
       `;
       document.head.appendChild(style);
   
-      const container = document.createElement("div");
-      container.id = "wplace-image-bot-container";
-      container.innerHTML = `
-        <div class="wplace-header">
-          <div class="wplace-header-title">
-            <i class="fas fa-image"></i>
-            <span>${Utils.t("title")}</span>
-          </div>
-          <div class="wplace-header-controls">
-            <button id="minimizeBtn" class="wplace-header-btn" title="${Utils.t(
-              "minimize"
-            )}">
-              <i class="fas fa-minus"></i>
-            </button>
-          </div>
-        </div>
-        <div class="wplace-content">
-          <div class="wplace-controls">
-            <div class="wplace-controls-row">
-              <button id="initBotBtn" class="wplace-btn wplace-btn-primary">
-                <i class="fas fa-robot"></i>
-                <span>Init</span>
-              </button>
-              <button id="uploadBtn" class="wplace-btn wplace-btn-upload" disabled>
-                <i class="fas fa-upload"></i>
-                <span>Upload</span>
-              </button>
-            </div>
-            
-            <div class="wplace-controls-row">
-              <button id="resizeBtn" class="wplace-btn wplace-btn-primary" disabled>
-                <i class="fas fa-expand"></i>
-                <span>Resize</span>
-              </button>
-              <button id="selectPosBtn" class="wplace-btn wplace-btn-select" disabled>
-                <i class="fas fa-crosshairs"></i>
-                <span>Position</span>
-              </button>
-            </div>
-            
-            <div class="wplace-controls-row">
-              <button id="startBtn" class="wplace-btn wplace-btn-start" disabled>
-                <i class="fas fa-play"></i>
-                <span>Start</span>
-              </button>
-              <button id="stopBtn" class="wplace-btn wplace-btn-stop" disabled>
-                <i class="fas fa-stop"></i>
-                <span>Stop</span>
-              </button>
-            </div>
-            
-            <div class="wplace-controls-row">
-              <button id="saveBtn" class="wplace-btn wplace-btn-primary" disabled>
-                <i class="fas fa-save"></i>
-                <span>Save</span>
-              </button>
-              <button id="loadBtn" class="wplace-btn wplace-btn-primary">
-                <i class="fas fa-folder-open"></i>
-                <span>Load</span>
-              </button>
-            </div>
-            
-            <div class="wplace-controls-row">
-              <button id="exportBtn" class="wplace-btn wplace-btn-primary" disabled>
-                <i class="fas fa-download"></i>
-                <span>Export</span>
-              </button>
-              <button id="importBtn" class="wplace-btn wplace-btn-primary">
-                <i class="fas fa-upload"></i>
-                <span>Import</span>
-              </button>
-            </div>
-            
-            <div class="wplace-controls-row">
-              <button id="saveSlotBtn" class="wplace-btn wplace-btn-primary" disabled>
-                <i class="fas fa-save"></i>
-                <span>Save Slot</span>
-              </button>
-              <button id="loadSlotBtn" class="wplace-btn wplace-btn-primary">
-                <i class="fas fa-folder-open"></i>
-                <span>Load Slot</span>
-              </button>
-            </div>
-            
-            <div class="wplace-controls-row">
-              <button id="loadSyncBtn" class="wplace-btn wplace-btn-primary">
-                <i class="fas fa-sync"></i>
-                <span>Sync</span>
-              </button>
-            </div>
-          
-          <div class="wplace-controls" style="padding: 8px; background: ${CONFIG.THEME.secondary}; border-radius: 6px; margin-top: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-              <label style="display: flex; align-items: center; gap: 6px; color: ${CONFIG.THEME.text}; cursor: pointer; font-size: 12px;">
-                <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
-                <i class="fas fa-sync"></i>
-                <span>Auto-Sync</span>
-              </label>
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="color: ${CONFIG.THEME.text}; font-size: 11px;">Slot:</span>
-                <select id="currentSlotSelect" style="background: ${CONFIG.THEME.primary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 3px; padding: 1px 3px; font-size: 11px;">
-                  <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
-                  <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
-                  <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
-                  <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
-                  <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
-                </select>
-              </div>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-              <label style="display: flex; align-items: center; gap: 6px; color: ${CONFIG.THEME.text}; cursor: pointer; font-size: 12px;">
-                <input type="checkbox" id="multiIpSyncCheckbox" ${state.multiIpSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
-                <i class="fas fa-globe"></i>
-                <span>Multi-IP</span>
-              </label>
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="color: ${CONFIG.THEME.text}; font-size: 11px;">Interval:</span>
-                <select id="syncIntervalSelect" style="background: ${CONFIG.THEME.primary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 3px; padding: 1px 3px; font-size: 11px;">
-                  <option value="5" ${state.syncInterval === 5 ? 'selected' : ''}>5s</option>
-                  <option value="10" ${state.syncInterval === 10 ? 'selected' : ''}>10s</option>
-                  <option value="30" ${state.syncInterval === 30 ? 'selected' : ''}>30s</option>
-                  <option value="60" ${state.syncInterval === 60 ? 'selected' : ''}>1m</option>
-                  <option value="300" ${state.syncInterval === 300 ? 'selected' : ''}>5m</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          <div class="wplace-progress">
-            <div id="progressBar" class="wplace-progress-bar" style="width: 0%"></div>
-          </div>
-          
-          <div class="wplace-stats">
-            <div id="statsArea">
-              <div class="wplace-stat-item">
-                <div class="wplace-stat-label"><i class="fas fa-info-circle"></i> ${Utils.t(
-                  "initMessage"
-                )}</div>
-              </div>
-            </div>
-          </div>
-          
-          <div id="statusText" class="wplace-status status-default">
-            ${Utils.t("waitingInit")}
-          </div>
-        </div>
-      `;
+             const container = document.createElement("div");
+       container.id = "wplace-image-bot-container";
+       container.innerHTML = `
+         <div class="wplace-header">
+           <div class="wplace-header-title">
+             <i class="fas fa-image"></i>
+             <span>${Utils.t("title")}</span>
+           </div>
+           <div class="wplace-header-controls">
+             <button id="minimizeBtn" class="wplace-header-btn" title="${Utils.t(
+               "minimize"
+             )}">
+               <i class="fas fa-minus"></i>
+             </button>
+           </div>
+         </div>
+         
+         <div class="wplace-tabs">
+           <button class="wplace-tab active" data-tab="main">
+             <i class="fas fa-cogs"></i> Main
+           </button>
+           <button class="wplace-tab" data-tab="progress">
+             <i class="fas fa-chart-line"></i> Progress
+           </button>
+           <button class="wplace-tab" data-tab="sync">
+             <i class="fas fa-sync"></i> Sync
+           </button>
+         </div>
+         
+         <div class="wplace-content">
+           <!-- Main Tab -->
+           <div id="mainTab" class="wplace-tab-content active">
+             <div class="wplace-controls">
+               <div class="wplace-controls-row">
+                 <button id="initBotBtn" class="wplace-btn wplace-btn-primary">
+                   <i class="fas fa-robot"></i>
+                   <span>Init</span>
+                 </button>
+                 <button id="uploadBtn" class="wplace-btn wplace-btn-upload" disabled>
+                   <i class="fas fa-upload"></i>
+                   <span>Upload</span>
+                 </button>
+               </div>
+               
+               <div class="wplace-controls-row">
+                 <button id="resizeBtn" class="wplace-btn wplace-btn-primary" disabled>
+                   <i class="fas fa-expand"></i>
+                   <span>Resize</span>
+                 </button>
+                 <button id="selectPosBtn" class="wplace-btn wplace-btn-select" disabled>
+                   <i class="fas fa-crosshairs"></i>
+                   <span>Position</span>
+                 </button>
+               </div>
+               
+               <div class="wplace-controls-row">
+                 <button id="startBtn" class="wplace-btn wplace-btn-start" disabled>
+                   <i class="fas fa-play"></i>
+                   <span>Start</span>
+                 </button>
+                 <button id="stopBtn" class="wplace-btn wplace-btn-stop" disabled>
+                   <i class="fas fa-stop"></i>
+                   <span>Stop</span>
+                 </button>
+               </div>
+               
+               <div class="wplace-controls-row">
+                 <button id="saveBtn" class="wplace-btn wplace-btn-primary" disabled>
+                   <i class="fas fa-save"></i>
+                   <span>Save</span>
+                 </button>
+                 <button id="loadBtn" class="wplace-btn wplace-btn-primary">
+                   <i class="fas fa-folder-open"></i>
+                   <span>Load</span>
+                 </button>
+               </div>
+               
+               <div class="wplace-controls-row">
+                 <button id="exportBtn" class="wplace-btn wplace-btn-primary" disabled>
+                   <i class="fas fa-download"></i>
+                   <span>Export</span>
+                 </button>
+                 <button id="importBtn" class="wplace-btn wplace-btn-primary">
+                   <i class="fas fa-upload"></i>
+                   <span>Import</span>
+                 </button>
+               </div>
+               
+               <div class="wplace-controls-row">
+                 <button id="saveSlotBtn" class="wplace-btn wplace-btn-primary" disabled>
+                   <i class="fas fa-save"></i>
+                   <span>Save Slot</span>
+                 </button>
+                 <button id="loadSlotBtn" class="wplace-btn wplace-btn-primary">
+                   <i class="fas fa-folder-open"></i>
+                   <span>Load Slot</span>
+                 </button>
+               </div>
+             </div>
+             
+             <div class="wplace-progress">
+               <div id="progressBar" class="wplace-progress-bar" style="width: 0%"></div>
+             </div>
+             
+             <div class="wplace-stats">
+               <div id="statsArea">
+                 <div class="wplace-stat-item">
+                   <div class="wplace-stat-label"><i class="fas fa-info-circle"></i> ${Utils.t(
+                     "initMessage"
+                   )}</div>
+                 </div>
+               </div>
+             </div>
+             
+             <div id="statusText" class="wplace-status status-default">
+               ${Utils.t("waitingInit")}
+             </div>
+           </div>
+           
+           <!-- Progress Tab -->
+           <div id="progressTab" class="wplace-tab-content">
+             <div class="wplace-progress-detail">
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-image"></i>
+                   <span>Total Pixels</span>
+                 </div>
+                 <div class="wplace-progress-value" id="totalPixelsValue">0</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-paint-brush"></i>
+                   <span>Painted Pixels</span>
+                 </div>
+                 <div class="wplace-progress-value" id="paintedPixelsValue">0</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-percentage"></i>
+                   <span>Progress</span>
+                 </div>
+                 <div class="wplace-progress-value" id="progressPercentValue">0%</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-bolt"></i>
+                   <span>Current Charges</span>
+                 </div>
+                 <div class="wplace-progress-value" id="currentChargesValue">0</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-clock"></i>
+                   <span>Estimated Time</span>
+                 </div>
+                 <div class="wplace-progress-value" id="estimatedTimeValue">--</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-map-marker-alt"></i>
+                   <span>Last Position</span>
+                 </div>
+                 <div class="wplace-progress-value" id="lastPositionValue">X: 0, Y: 0</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-palette"></i>
+                   <span>Available Colors</span>
+                 </div>
+                 <div class="wplace-progress-value" id="availableColorsValue">0</div>
+               </div>
+             </div>
+             
+             <div class="wplace-progress-detail">
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-calendar"></i>
+                   <span>Started At</span>
+                 </div>
+                 <div class="wplace-progress-value" id="startedAtValue">--</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-tachometer-alt"></i>
+                   <span>Pixels/Second</span>
+                 </div>
+                 <div class="wplace-progress-value" id="pixelsPerSecondValue">0</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-hourglass-half"></i>
+                   <span>Time Remaining</span>
+                 </div>
+                 <div class="wplace-progress-value" id="timeRemainingValue">--</div>
+               </div>
+             </div>
+           </div>
+           
+           <!-- Sync Tab -->
+           <div id="syncTab" class="wplace-tab-content">
+             <div class="wplace-controls" style="padding: 8px; background: ${CONFIG.THEME.secondary}; border-radius: 6px; margin-bottom: 10px;">
+               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                 <label style="display: flex; align-items: center; gap: 6px; color: ${CONFIG.THEME.text}; cursor: pointer; font-size: 12px;">
+                   <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+                   <i class="fas fa-sync"></i>
+                   <span>Auto-Sync</span>
+                 </label>
+                 <div style="display: flex; align-items: center; gap: 4px;">
+                   <span style="color: ${CONFIG.THEME.text}; font-size: 11px;">Slot:</span>
+                   <select id="currentSlotSelect" style="background: ${CONFIG.THEME.primary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 3px; padding: 1px 3px; font-size: 11px;">
+                     <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
+                     <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
+                     <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
+                     <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
+                     <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
+                   </select>
+                 </div>
+               </div>
+               
+               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                 <label style="display: flex; align-items: center; gap: 6px; color: ${CONFIG.THEME.text}; cursor: pointer; font-size: 12px;">
+                   <input type="checkbox" id="multiIpSyncCheckbox" ${state.multiIpSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+                   <i class="fas fa-globe"></i>
+                   <span>Multi-IP</span>
+                 </label>
+                 <div style="display: flex; align-items: center; gap: 4px;">
+                   <span style="color: ${CONFIG.THEME.text}; font-size: 11px;">Interval:</span>
+                   <select id="syncIntervalSelect" style="background: ${CONFIG.THEME.primary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 3px; padding: 1px 3px; font-size: 11px;">
+                     <option value="5" ${state.syncInterval === 5 ? 'selected' : ''}>5s</option>
+                     <option value="10" ${state.syncInterval === 10 ? 'selected' : ''}>10s</option>
+                     <option value="30" ${state.syncInterval === 30 ? 'selected' : ''}>30s</option>
+                     <option value="60" ${state.syncInterval === 60 ? 'selected' : ''}>1m</option>
+                     <option value="300" ${state.syncInterval === 300 ? 'selected' : ''}>5m</option>
+                   </select>
+                 </div>
+               </div>
+             </div>
+             
+             <div class="wplace-controls-row">
+               <button id="loadSyncBtn" class="wplace-btn wplace-btn-primary">
+                 <i class="fas fa-sync"></i>
+                 <span>Manual Sync</span>
+               </button>
+             </div>
+             
+             <div class="wplace-progress-detail">
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-network-wired"></i>
+                   <span>IP Address</span>
+                 </div>
+                 <div class="wplace-progress-value" id="ipAddressValue">--</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-user"></i>
+                   <span>Profile ID</span>
+                 </div>
+                 <div class="wplace-progress-value" id="profileIdValue">--</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-sync-alt"></i>
+                   <span>Sync Status</span>
+                 </div>
+                 <div class="wplace-progress-value" id="syncStatusValue">Disabled</div>
+               </div>
+               <div class="wplace-progress-item">
+                 <div class="wplace-progress-label">
+                   <i class="fas fa-clock"></i>
+                   <span>Last Sync</span>
+                 </div>
+                 <div class="wplace-progress-value" id="lastSyncValue">--</div>
+               </div>
+             </div>
+           </div>
+         </div>
+       `;
   
       const resizeContainer = document.createElement("div");
       resizeContainer.className = "resize-container";
@@ -1663,15 +1879,37 @@
       const importBtn = container.querySelector("#importBtn");
       const saveSlotBtn = container.querySelector("#saveSlotBtn");
       const loadSlotBtn = container.querySelector("#loadSlotBtn");
-      const loadSyncBtn = container.querySelector("#loadSyncBtn");
-             const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
+             const loadSyncBtn = container.querySelector("#loadSyncBtn");
+       const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
        const currentSlotSelect = container.querySelector("#currentSlotSelect");
        const multiIpSyncCheckbox = container.querySelector("#multiIpSyncCheckbox");
-      const minimizeBtn = container.querySelector("#minimizeBtn");
-      const statusText = container.querySelector("#statusText");
-      const progressBar = container.querySelector("#progressBar");
-      const statsArea = container.querySelector("#statsArea");
-      const content = container.querySelector(".wplace-content");
+       const minimizeBtn = container.querySelector("#minimizeBtn");
+       const statusText = container.querySelector("#statusText");
+       const progressBar = container.querySelector("#progressBar");
+       const statsArea = container.querySelector("#statsArea");
+       const content = container.querySelector(".wplace-content");
+       
+       // Tab elements
+       const tabs = container.querySelectorAll(".wplace-tab");
+       const tabContents = container.querySelectorAll(".wplace-tab-content");
+       
+       // Progress tab elements
+       const totalPixelsValue = container.querySelector("#totalPixelsValue");
+       const paintedPixelsValue = container.querySelector("#paintedPixelsValue");
+       const progressPercentValue = container.querySelector("#progressPercentValue");
+       const currentChargesValue = container.querySelector("#currentChargesValue");
+       const estimatedTimeValue = container.querySelector("#estimatedTimeValue");
+       const lastPositionValue = container.querySelector("#lastPositionValue");
+       const availableColorsValue = container.querySelector("#availableColorsValue");
+       const startedAtValue = container.querySelector("#startedAtValue");
+       const pixelsPerSecondValue = container.querySelector("#pixelsPerSecondValue");
+       const timeRemainingValue = container.querySelector("#timeRemainingValue");
+       
+       // Sync tab elements
+       const ipAddressValue = container.querySelector("#ipAddressValue");
+       const profileIdValue = container.querySelector("#profileIdValue");
+       const syncStatusValue = container.querySelector("#syncStatusValue");
+       const lastSyncValue = container.querySelector("#lastSyncValue");
   
       const widthSlider = resizeContainer.querySelector("#widthSlider");
       const heightSlider = resizeContainer.querySelector("#heightSlider");
@@ -1682,16 +1920,97 @@
       const confirmResize = resizeContainer.querySelector("#confirmResize");
       const cancelResize = resizeContainer.querySelector("#cancelResize");
   
-      minimizeBtn.addEventListener("click", () => {
-        state.minimized = !state.minimized;
-        if (state.minimized) {
-          container.classList.add("wplace-minimized");
-          minimizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
-        } else {
-          container.classList.remove("wplace-minimized");
-          minimizeBtn.innerHTML = '<i class="fas fa-minus"></i>';
-        }
-      });
+             // Tab switching logic
+       tabs.forEach(tab => {
+         tab.addEventListener("click", () => {
+           const targetTab = tab.getAttribute("data-tab");
+           
+           // Remove active class from all tabs and contents
+           tabs.forEach(t => t.classList.remove("active"));
+           tabContents.forEach(content => content.classList.remove("active"));
+           
+           // Add active class to clicked tab and corresponding content
+           tab.classList.add("active");
+           document.getElementById(targetTab + "Tab").classList.add("active");
+           
+           // Update data when switching to progress tab
+           if (targetTab === "progress") {
+             updateProgressTab();
+           } else if (targetTab === "sync") {
+             updateSyncTab();
+           }
+         });
+       });
+       
+                // Function to update progress tab data
+         function updateProgressTab() {
+           if (totalPixelsValue) totalPixelsValue.textContent = state.totalPixels || 0;
+           if (paintedPixelsValue) paintedPixelsValue.textContent = state.paintedPixels || 0;
+           
+           const progress = state.totalPixels > 0 ? Math.round((state.paintedPixels / state.totalPixels) * 100) : 0;
+           if (progressPercentValue) progressPercentValue.textContent = progress + "%";
+           
+           if (currentChargesValue) currentChargesValue.textContent = Math.floor(state.currentCharges) || 0;
+           if (estimatedTimeValue) estimatedTimeValue.textContent = state.estimatedTime > 0 ? Utils.formatTime(state.estimatedTime) : "--";
+           
+           const lastPos = state.lastPosition || { x: 0, y: 0 };
+           if (lastPositionValue) lastPositionValue.textContent = `X: ${lastPos.x}, Y: ${lastPos.y}`;
+           
+           if (availableColorsValue) availableColorsValue.textContent = state.availableColors?.length || 0;
+           
+           // Update started at time
+           if (state.startTime) {
+             if (startedAtValue) startedAtValue.textContent = new Date(state.startTime).toLocaleTimeString();
+           } else {
+             if (startedAtValue) startedAtValue.textContent = "--";
+           }
+           
+           // Calculate pixels per second
+           if (state.startTime && state.paintedPixels > 0) {
+             const elapsed = (Date.now() - state.startTime) / 1000;
+             const pixelsPerSecond = Math.round(state.paintedPixels / elapsed);
+             if (pixelsPerSecondValue) pixelsPerSecondValue.textContent = pixelsPerSecond;
+           } else {
+             if (pixelsPerSecondValue) pixelsPerSecondValue.textContent = "0";
+           }
+           
+           // Update time remaining
+           if (state.estimatedTime > 0) {
+             if (timeRemainingValue) timeRemainingValue.textContent = Utils.formatTime(state.estimatedTime);
+           } else {
+             if (timeRemainingValue) timeRemainingValue.textContent = "--";
+           }
+         }
+       
+       // Function to update sync tab data
+       function updateSyncTab() {
+         if (ipAddressValue) ipAddressValue.textContent = state.ipAddress || "--";
+         if (profileIdValue) profileIdValue.textContent = state.profileId ? state.profileId.substring(0, 20) + "..." : "--";
+         if (syncStatusValue) syncStatusValue.textContent = state.autoSync ? "Enabled" : "Disabled";
+         if (lastSyncValue) lastSyncValue.textContent = state.lastSyncTime ? new Date(state.lastSyncTime).toLocaleTimeString() : "--";
+       }
+       
+       // Update sync tab when sync status changes
+       const originalUpdateSyncTab = updateSyncTab;
+       updateSyncTab = function() {
+         originalUpdateSyncTab();
+         // Update sync tab if it's active
+         const activeTab = container.querySelector(".wplace-tab.active");
+         if (activeTab && activeTab.getAttribute("data-tab") === "sync") {
+           originalUpdateSyncTab();
+         }
+       };
+       
+       minimizeBtn.addEventListener("click", () => {
+         state.minimized = !state.minimized;
+         if (state.minimized) {
+           container.classList.add("wplace-minimized");
+           minimizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+         } else {
+           container.classList.remove("wplace-minimized");
+           minimizeBtn.innerHTML = '<i class="fas fa-minus"></i>';
+         }
+       });
   
       window.updateUI = (messageKey, type = "default", params = {}) => {
         const message = Utils.t(messageKey, params);
@@ -1702,62 +2021,68 @@
         statusText.style.animation = "slideIn 0.3s ease-out";
       };
   
-            window.updateStats = async () => {
-        if (!state.colorsChecked || !state.imageLoaded) return;
+                         window.updateStats = async () => {
+         if (!state.colorsChecked || !state.imageLoaded) return;
 
-        const { charges, cooldown } = await WPlaceService.getCharges();
-        state.currentCharges = Math.floor(charges);
-        state.cooldown = cooldown;
-        
-        console.log(`⚡ Charges updated: ${state.currentCharges} (batch size will be: ${Math.floor(state.currentCharges)})`);
-  
-        const progress =
-          state.totalPixels > 0
-            ? Math.round((state.paintedPixels / state.totalPixels) * 100)
-            : 0;
-        const remainingPixels = state.totalPixels - state.paintedPixels;
-  
-        state.estimatedTime = Utils.calculateEstimatedTime(
-          remainingPixels,
-          state.currentCharges,
-          state.cooldown
-        );
-  
-        progressBar.style.width = `${progress}%`;
-  
-        statsArea.innerHTML = `
-          <div class="wplace-stat-item">
-            <div class="wplace-stat-label"><i class="fas fa-image"></i> ${Utils.t(
-              "progress"
-            )}</div>
-            <div>${progress}%</div>
-          </div>
-          <div class="wplace-stat-item">
-            <div class="wplace-stat-label"><i class="fas fa-paint-brush"></i> ${Utils.t(
-              "pixels"
-            )}</div>
-            <div>${state.paintedPixels}/${state.totalPixels}</div>
-          </div>
-          <div class="wplace-stat-item">
-            <div class="wplace-stat-label"><i class="fas fa-bolt"></i> ${Utils.t(
-              "charges"
-            )}</div>
-            <div>${Math.floor(state.currentCharges)}</div>
-          </div>
-          ${
-            state.imageLoaded
-              ? `
-          <div class="wplace-stat-item">
-            <div class="wplace-stat-label"><i class="fas fa-clock"></i> ${Utils.t(
-              "estimatedTime"
-            )}</div>
-            <div>${Utils.formatTime(state.estimatedTime)}</div>
-          </div>
-          `
-              : ""
-          }
-        `;
-      };
+         const { charges, cooldown } = await WPlaceService.getCharges();
+         state.currentCharges = Math.floor(charges);
+         state.cooldown = cooldown;
+         
+         console.log(`⚡ Charges updated: ${state.currentCharges} (batch size will be: ${Math.floor(state.currentCharges)})`);
+
+         const progress =
+           state.totalPixels > 0
+             ? Math.round((state.paintedPixels / state.totalPixels) * 100)
+             : 0;
+         const remainingPixels = state.totalPixels - state.paintedPixels;
+
+         state.estimatedTime = Utils.calculateEstimatedTime(
+           remainingPixels,
+           state.currentCharges,
+           state.cooldown
+         );
+
+         progressBar.style.width = `${progress}%`;
+
+         statsArea.innerHTML = `
+           <div class="wplace-stat-item">
+             <div class="wplace-stat-label"><i class="fas fa-image"></i> ${Utils.t(
+               "progress"
+             )}</div>
+             <div>${progress}%</div>
+           </div>
+           <div class="wplace-stat-item">
+             <div class="wplace-stat-label"><i class="fas fa-paint-brush"></i> ${Utils.t(
+               "pixels"
+             )}</div>
+             <div>${state.paintedPixels}/${state.totalPixels}</div>
+           </div>
+           <div class="wplace-stat-item">
+             <div class="wplace-stat-label"><i class="fas fa-bolt"></i> ${Utils.t(
+               "charges"
+             )}</div>
+             <div>${Math.floor(state.currentCharges)}</div>
+           </div>
+           ${
+             state.imageLoaded
+               ? `
+           <div class="wplace-stat-item">
+             <div class="wplace-stat-label"><i class="fas fa-clock"></i> ${Utils.t(
+               "estimatedTime"
+             )}</div>
+             <div>${Utils.formatTime(state.estimatedTime)}</div>
+           </div>
+           `
+               : ""
+           }
+         `;
+         
+         // Update progress tab data if it's active
+         const activeTab = container.querySelector(".wplace-tab.active");
+         if (activeTab && activeTab.getAttribute("data-tab") === "progress") {
+           updateProgressTab();
+         }
+       };
   
       function showResizeDialog(processor) {
         const { width, height } = processor.getDimensions();
@@ -2014,16 +2339,17 @@
           return;
         }
   
-        state.running = true;
-        state.stopFlag = false;
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        uploadBtn.disabled = true;
-        selectPosBtn.disabled = true;
-        resizeBtn.disabled = true;
-        saveBtn.disabled = true;
-  
-        updateUI("startPaintingMsg", "success");
+                 state.running = true;
+         state.stopFlag = false;
+         state.startTime = Date.now(); // Set start time
+         startBtn.disabled = true;
+         stopBtn.disabled = false;
+         uploadBtn.disabled = true;
+         selectPosBtn.disabled = true;
+         resizeBtn.disabled = true;
+         saveBtn.disabled = true;
+
+         updateUI("startPaintingMsg", "success");
   
         try {
           await processImage();
@@ -2355,19 +2681,22 @@
         }
       });
 
-      // THÊM: Auto-Sync Checkbox Event Listener
-      autoSyncCheckbox.addEventListener("change", () => {
-        state.autoSync = autoSyncCheckbox.checked;
-        console.log(`🔄 Auto-sync ${state.autoSync ? 'enabled' : 'disabled'}`);
-        
-        if (state.autoSync) {
-          Utils.startAutoSync();
-          Utils.showAlert(Utils.t("autoSyncEnabled"), "success");
-        } else {
-          Utils.stopAutoSync();
-          Utils.showAlert(Utils.t("autoSyncDisabled"), "warning");
-        }
-      });
+             // THÊM: Auto-Sync Checkbox Event Listener
+       autoSyncCheckbox.addEventListener("change", () => {
+         state.autoSync = autoSyncCheckbox.checked;
+         console.log(`🔄 Auto-sync ${state.autoSync ? 'enabled' : 'disabled'}`);
+         
+         if (state.autoSync) {
+           Utils.startAutoSync();
+           Utils.showAlert(Utils.t("autoSyncEnabled"), "success");
+         } else {
+           Utils.stopAutoSync();
+           Utils.showAlert(Utils.t("autoSyncDisabled"), "warning");
+         }
+         
+         // Update sync tab
+         updateSyncTab();
+       });
 
              // THÊM: Current Slot Select Event Listener
        currentSlotSelect.addEventListener("change", () => {
