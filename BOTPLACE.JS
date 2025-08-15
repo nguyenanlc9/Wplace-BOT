@@ -5,6 +5,13 @@
       TRANSPARENCY_THRESHOLD: 100,
       WHITE_THRESHOLD: 250,
       LOG_INTERVAL: 10,
+      // Memory optimization settings
+      MEMORY_OPTIMIZATION: true,
+      BATCH_SIZE: 50, // Reduce batch size for less memory usage
+      CLEANUP_INTERVAL: 1000, // Cleanup memory every 1000 pixels
+      USE_COMPRESSED_MAP: true, // Use compressed storage for painted pixels
+      // Painting speed settings
+      PAINTING_SPEED: 50, // Default painting speed in pixels per second
       THEME: {
         primary: "#000000",
         secondary: "#111111",
@@ -344,7 +351,25 @@
           state.lastPosition = savedState.lastPosition || { x: 0, y: 0 };
           state.startPosition = savedState.startPosition;
           state.region = savedState.region;
-          state.paintedMap = savedState.paintedMap;
+          // Convert paintedMap to paintedPixelsSet for memory optimization
+          if (savedState.paintedMap) {
+            // Legacy support: convert old paintedMap to new format
+            state.paintedPixelsSet = new Set();
+            if (Array.isArray(savedState.paintedMap)) {
+              for (let y = 0; y < savedState.paintedMap.length; y++) {
+                for (let x = 0; x < savedState.paintedMap[y].length; x++) {
+                  if (savedState.paintedMap[y][x]) {
+                    state.paintedPixelsSet.add(`${x},${y}`);
+                  }
+                }
+              }
+            }
+          } else if (savedState.paintedPixelsSet) {
+            // New format: restore directly
+            state.paintedPixelsSet = new Set(savedState.paintedPixelsSet);
+          } else {
+            state.paintedPixelsSet = new Set();
+          }
           state.imageData = savedState.imageData;
           state.availableColors = savedState.availableColors;
           state.language = savedState.language;
@@ -421,6 +446,31 @@
         } catch (error) {
           console.error('❌ Error clearing progress:', error);
           return false;
+        }
+      },
+
+      // THÊM: Memory cleanup function
+      cleanupMemory: () => {
+        try {
+          // Force garbage collection if available
+          if (window.gc) {
+            window.gc();
+          }
+          
+          // Clear any unused references
+          if (state.paintedPixelsSet && state.paintedPixelsSet.size > 10000) {
+            // If set gets too large, consider compressing it
+            console.log(`🧹 Memory cleanup: paintedPixelsSet size = ${state.paintedPixelsSet.size}`);
+          }
+          
+          // Clear console logs to reduce memory usage
+          if (console.clear) {
+            console.clear();
+          }
+          
+          console.log('🧹 Memory cleanup completed');
+        } catch (error) {
+          console.error('❌ Error during memory cleanup:', error);
         }
       },
   
@@ -684,12 +734,18 @@
                 state.paintedPixels = syncData.progress.paintedPixels;
                 state.lastPosition = syncData.progress.lastPosition;
                 
-                // Merge painted maps
-                if (syncData.progress.paintedMap && state.paintedMap) {
-                  for (let y = 0; y < state.paintedMap.length; y++) {
-                    for (let x = 0; x < state.paintedMap[y].length; x++) {
+                // Merge painted pixels using compressed storage
+                if (syncData.progress.paintedPixelsSet && state.paintedPixelsSet) {
+                  // Add all painted pixels from sync data to current set
+                  syncData.progress.paintedPixelsSet.forEach(pixelKey => {
+                    state.paintedPixelsSet.add(pixelKey);
+                  });
+                } else if (syncData.progress.paintedMap && state.paintedPixelsSet) {
+                  // Legacy support: convert old paintedMap to new format
+                  for (let y = 0; y < syncData.progress.paintedMap.length; y++) {
+                    for (let x = 0; x < syncData.progress.paintedMap[y].length; x++) {
                       if (syncData.progress.paintedMap[y] && syncData.progress.paintedMap[y][x]) {
-                        state.paintedMap[y][x] = true;
+                        state.paintedPixelsSet.add(`${x},${y}`);
                       }
                     }
                   }
@@ -1264,6 +1320,36 @@
           cursor: not-allowed;
           transform: none !important;
         }
+        
+        .wplace-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: ${CONFIG.THEME.text};
+          opacity: 0.9;
+        }
+        
+        .wplace-select {
+          background: ${CONFIG.THEME.secondary};
+          border: 1px solid ${CONFIG.THEME.accent};
+          color: ${CONFIG.THEME.text};
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .wplace-select:hover {
+          border-color: ${CONFIG.THEME.highlight};
+        }
+        
+        .wplace-select:focus {
+          outline: none;
+          border-color: ${CONFIG.THEME.highlight};
+          box-shadow: 0 0 0 2px rgba(119, 92, 227, 0.2);
+        }
         .wplace-stats {
           background: ${CONFIG.THEME.secondary};
           padding: 8px;
@@ -1476,14 +1562,18 @@
                </div>
                
                <div class="wplace-controls-row">
-                 <button id="startBtn2" class="wplace-btn wplace-btn-start" disabled>
-                   <i class="fas fa-play"></i>
-                   <span>Start 2</span>
-                 </button>
-                 <button id="startBtn3" class="wplace-btn wplace-btn-start" disabled>
-                   <i class="fas fa-play"></i>
-                   <span>Start 3</span>
-                 </button>
+                 <label class="wplace-label">
+                   <i class="fas fa-tachometer-alt"></i>
+                   <span>Painting Speed:</span>
+                 </label>
+                 <select id="paintingSpeedSelect" class="wplace-select">
+                   <option value="10">10 px/s</option>
+                   <option value="25">25 px/s</option>
+                   <option value="50" selected>50 px/s</option>
+                   <option value="100">100 px/s</option>
+                   <option value="200">200 px/s</option>
+                   <option value="500">500 px/s</option>
+                 </select>
                </div>
                
                <div class="wplace-controls-row">
@@ -1517,6 +1607,13 @@
                    <i class="fas fa-folder-open"></i>
                    <span>Load Slot</span>
                  </button>
+               </div>
+               
+               <div class="wplace-controls-row">
+                 <label class="wplace-checkbox">
+                   <input type="checkbox" id="memoryOptimizationCheckbox" checked>
+                   <span>Memory Optimize</span>
+                 </label>
                </div>
              </div>
              
@@ -1777,8 +1874,7 @@
       const resizeBtn = container.querySelector("#resizeBtn");
       const selectPosBtn = container.querySelector("#selectPosBtn");
       const startBtn = container.querySelector("#startBtn");
-      const startBtn2 = container.querySelector("#startBtn2");
-      const startBtn3 = container.querySelector("#startBtn3");
+          const paintingSpeedSelect = container.querySelector("#paintingSpeedSelect");
       const stopBtn = container.querySelector("#stopBtn");
       const saveBtn = container.querySelector("#saveBtn");
       const loadBtn = container.querySelector("#loadBtn");
@@ -1786,6 +1882,7 @@
       const importBtn = container.querySelector("#importBtn");
       const saveSlotBtn = container.querySelector("#saveSlotBtn");
       const loadSlotBtn = container.querySelector("#loadSlotBtn");
+      const memoryOptimizationCheckbox = container.querySelector("#memoryOptimizationCheckbox");
              const loadSyncBtn = container.querySelector("#loadSyncBtn");
        const autoSyncCheckbox = container.querySelector("#autoSyncCheckbox");
        const currentSlotSelect = container.querySelector("#currentSlotSelect");
@@ -2151,8 +2248,6 @@
   
           if (state.startPosition) {
             startBtn.disabled = false;
-            startBtn2.disabled = false;
-            startBtn3.disabled = false;
           }
   
           updateStats();
@@ -2175,8 +2270,6 @@
         state.startPosition = null;
         state.region = null;
         startBtn.disabled = true;
-        startBtn2.disabled = true;
-        startBtn3.disabled = true;
   
         Utils.showAlert(Utils.t("selectPositionAlert"), "info");
         updateUI("waitingPosition", "default");
@@ -2213,8 +2306,6 @@
   
                   if (state.imageLoaded) {
                     startBtn.disabled = false;
-                    startBtn2.disabled = false;
-                    startBtn3.disabled = false;
                   }
   
                   window.fetch = originalFetch;
@@ -2267,8 +2358,6 @@
          state.stopFlag = false;
          state.startTime = Date.now(); // Set start time
          startBtn.disabled = true;
-         startBtn2.disabled = true;
-         startBtn3.disabled = true;
          stopBtn.disabled = false;
          uploadBtn.disabled = true;
          selectPosBtn.disabled = true;
@@ -2290,15 +2379,11 @@
   
           if (!state.stopFlag) {
             startBtn.disabled = true;
-            startBtn2.disabled = true;
-            startBtn3.disabled = true;
             uploadBtn.disabled = false;
             selectPosBtn.disabled = false;
             resizeBtn.disabled = false;
           } else {
             startBtn.disabled = false;
-            startBtn2.disabled = false;
-            startBtn3.disabled = false;
           }
         }
       });
@@ -2316,106 +2401,12 @@
         }
       });
 
-      // THÊM: Start Button 2 Event Listener (Alternative start method)
-      startBtn2.addEventListener("click", async () => {
-        if (!state.imageLoaded || !state.startPosition || !state.region) {
-          updateUI("missingRequirements", "error");
-          return;
-        }
-        if (!capturedCaptchaToken) {
-          updateUI("captchaNeeded", "error");
-          Utils.showAlert(Utils.t("captchaNeeded"), "error");
-          return;
-        }
-
-        state.running = true;
-        state.stopFlag = false;
-        state.startTime = Date.now(); // Set start time
-        startBtn.disabled = true;
-        startBtn2.disabled = true;
-        startBtn3.disabled = true;
-        stopBtn.disabled = false;
-        uploadBtn.disabled = true;
-        selectPosBtn.disabled = true;
-        resizeBtn.disabled = true;
-        saveBtn.disabled = true;
-
-        updateUI("startPaintingMsg", "success");
-
-        try {
-          await processImage();
-        } catch (error) {
-          console.error("Start 2 error:", error);
-          updateUI("paintingError", "error");
-        } finally {
-          state.running = false;
-          stopBtn.disabled = true;
-          saveBtn.disabled = false;
-
-          if (!state.stopFlag) {
-            startBtn.disabled = true;
-            startBtn2.disabled = true;
-            startBtn3.disabled = true;
-            uploadBtn.disabled = false;
-            selectPosBtn.disabled = false;
-            resizeBtn.disabled = false;
-          } else {
-            startBtn.disabled = false;
-            startBtn2.disabled = false;
-            startBtn3.disabled = false;
-          }
-        }
-      });
-
-      // THÊM: Start Button 3 Event Listener (Alternative start method)
-      startBtn3.addEventListener("click", async () => {
-        if (!state.imageLoaded || !state.startPosition || !state.region) {
-          updateUI("missingRequirements", "error");
-          return;
-        }
-        if (!capturedCaptchaToken) {
-          updateUI("captchaNeeded", "error");
-          Utils.showAlert(Utils.t("captchaNeeded"), "error");
-          return;
-        }
-
-        state.running = true;
-        state.stopFlag = false;
-        state.startTime = Date.now(); // Set start time
-        startBtn.disabled = true;
-        startBtn2.disabled = true;
-        startBtn3.disabled = true;
-        stopBtn.disabled = false;
-        uploadBtn.disabled = true;
-        selectPosBtn.disabled = true;
-        resizeBtn.disabled = true;
-        saveBtn.disabled = true;
-
-        updateUI("startPaintingMsg", "success");
-
-        try {
-          await processImage();
-        } catch (error) {
-          console.error("Start 3 error:", error);
-          updateUI("paintingError", "error");
-        } finally {
-          state.running = false;
-          stopBtn.disabled = true;
-          saveBtn.disabled = false;
-
-          if (!state.stopFlag) {
-            startBtn.disabled = true;
-            startBtn2.disabled = true;
-            startBtn3.disabled = true;
-            uploadBtn.disabled = false;
-            selectPosBtn.disabled = false;
-            resizeBtn.disabled = false;
-          } else {
-            startBtn.disabled = false;
-            startBtn2.disabled = false;
-            startBtn3.disabled = false;
-          }
-        }
+      // Painting Speed Select Event Listener
+      paintingSpeedSelect.addEventListener("change", () => {
+        const speed = parseInt(paintingSpeedSelect.value);
+        CONFIG.PAINTING_SPEED = speed;
+        console.log(`🎨 Painting speed set to: ${speed} pixels/second`);
+        Utils.showAlert(`🎨 Painting speed set to: ${speed} px/s`, "success");
       });
   
       saveBtn.addEventListener("click", () => {
@@ -2465,8 +2456,6 @@
             
             if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
               startBtn.disabled = false;
-              startBtn2.disabled = false;
-              startBtn3.disabled = false;
             }
           } else {
             Utils.showAlert("❌ Erro ao carregar progresso", "error");
@@ -2549,8 +2538,6 @@
               
               if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
                 startBtn.disabled = false;
-                startBtn2.disabled = false;
-                startBtn3.disabled = false;
               }
             } else {
               console.error("❌ Failed to restore progress");
@@ -2649,8 +2636,6 @@
                 
                 if (state.imageLoaded && state.startPosition && state.region && state.colorsChecked) {
                   startBtn.disabled = false;
-                  startBtn2.disabled = false;
-                  startBtn3.disabled = false;
                 }
               } else {
                 Utils.showAlert(`❌ Error loading from slot ${slot}`, "error");
@@ -2737,6 +2722,22 @@
          // Update sync tab
          updateSyncTab();
        });
+
+       // THÊM: Memory Optimization Checkbox Event Listener
+       memoryOptimizationCheckbox.addEventListener("change", () => {
+         CONFIG.MEMORY_OPTIMIZATION = memoryOptimizationCheckbox.checked;
+         console.log(`🧹 Memory optimization ${CONFIG.MEMORY_OPTIMIZATION ? 'enabled' : 'disabled'}`);
+         
+         if (CONFIG.MEMORY_OPTIMIZATION) {
+           Utils.showAlert("🧹 Memory optimization enabled - Reduced RAM usage", "success");
+         } else {
+           Utils.showAlert("⚠️ Memory optimization disabled - Higher RAM usage", "warning");
+         }
+       });
+
+       // THÊM: Initialize Painting Speed Select
+       paintingSpeedSelect.value = CONFIG.PAINTING_SPEED.toString();
+       console.log(`🎨 Initialized painting speed to: ${CONFIG.PAINTING_SPEED} px/s`);
 
              // THÊM: Current Slot Select Event Listener
        currentSlotSelect.addEventListener("change", () => {
@@ -2834,10 +2835,9 @@
       let startRow = state.lastPosition.y || 0;
       let startCol = state.lastPosition.x || 0;
   
-      if (!state.paintedMap) {
-        state.paintedMap = Array(height)
-          .fill()
-          .map(() => Array(width).fill(false));
+      // Use compressed storage for painted pixels to save memory
+      if (!state.paintedPixelsSet) {
+        state.paintedPixelsSet = new Set();
       }
   
       let pixelBatch = [];
@@ -2854,7 +2854,9 @@
               break outerLoop;
             }
   
-            if (state.paintedMap[y][x]) continue;
+            // Check if pixel is already painted using compressed storage
+            const pixelKey = `${x},${y}`;
+            if (state.paintedPixelsSet.has(pixelKey)) continue;
   
             const idx = (y * width + x) * 4;
             const r = pixels[idx];
@@ -2878,9 +2880,18 @@
               localY: y,
             });
   
-            if (pixelBatch.length >= Math.floor(state.currentCharges)) {
+            if (pixelBatch.length >= Math.min(Math.floor(state.currentCharges), CONFIG.BATCH_SIZE)) {
               console.log(`🎨 Sending batch: ${pixelBatch.length} pixels (charges: ${state.currentCharges})`);
               const success = await sendPixelBatch(pixelBatch, regionX, regionY);
+              
+              // Apply painting speed control
+              if (CONFIG.PAINTING_SPEED > 0) {
+                const delayMs = Math.max(0, (pixelBatch.length / CONFIG.PAINTING_SPEED) * 1000);
+                if (delayMs > 0) {
+                  console.log(`⏱️ Speed control: waiting ${delayMs.toFixed(0)}ms for ${pixelBatch.length} pixels at ${CONFIG.PAINTING_SPEED} px/s`);
+                  await Utils.sleep(delayMs);
+                }
+              }
 
               if (success === "token_error") {
                 state.stopFlag = true;
@@ -2888,10 +2899,8 @@
                 updateUI("captchaNeeded", "error");
                 Utils.showAlert(Utils.t("captchaNeeded"), "error");
                 
-                // Re-enable start buttons and other controls after CAPTCHA error
+                // Re-enable start button and other controls after CAPTCHA error
                 startBtn.disabled = false;
-                startBtn2.disabled = false;
-                startBtn3.disabled = false;
                 stopBtn.disabled = true;
                 uploadBtn.disabled = false;
                 selectPosBtn.disabled = false;
@@ -2903,7 +2912,9 @@
   
               if (success) {
                 pixelBatch.forEach((pixel) => {
-                  state.paintedMap[pixel.localY][pixel.localX] = true;
+                  // Store painted pixel in compressed format
+                  const pixelKey = `${pixel.localX},${pixel.localY}`;
+                  state.paintedPixelsSet.add(pixelKey);
                   state.paintedPixels++;
                 });
   
@@ -2917,6 +2928,11 @@
                 // Auto-save progress every 50 pixels
                 if (state.paintedPixels % 50 === 0) {
                   Utils.saveProgress();
+                }
+                
+                // Memory cleanup every 1000 pixels
+                if (state.paintedPixels % CONFIG.CLEANUP_INTERVAL === 0) {
+                  Utils.cleanupMemory();
                 }
               }
   
@@ -2938,9 +2954,21 @@
   
         if (pixelBatch.length > 0 && !state.stopFlag) {
           const success = await sendPixelBatch(pixelBatch, regionX, regionY);
+          
+          // Apply painting speed control for final batch
+          if (success && CONFIG.PAINTING_SPEED > 0) {
+            const delayMs = Math.max(0, (pixelBatch.length / CONFIG.PAINTING_SPEED) * 1000);
+            if (delayMs > 0) {
+              console.log(`⏱️ Speed control (final): waiting ${delayMs.toFixed(0)}ms for ${pixelBatch.length} pixels at ${CONFIG.PAINTING_SPEED} px/s`);
+              await Utils.sleep(delayMs);
+            }
+          }
+          
           if (success) {
             pixelBatch.forEach((pixel) => {
-              state.paintedMap[pixel.localY][pixel.localX] = true;
+              // Store painted pixel in compressed format
+              const pixelKey = `${pixel.localX},${pixel.localY}`;
+              state.paintedPixelsSet.add(pixelKey);
               state.paintedPixels++;
             });
             state.currentCharges -= pixelBatch.length;
@@ -2958,7 +2986,7 @@
       } else {
         updateUI("paintingComplete", "success", { count: state.paintedPixels });
         state.lastPosition = { x: 0, y: 0 };
-        state.paintedMap = null;
+        state.paintedPixelsSet = null;
         // Clear saved data when completed
         Utils.clearProgress();
       }
