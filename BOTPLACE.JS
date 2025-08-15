@@ -1202,8 +1202,8 @@
         #wplace-image-bot-container {
           position: fixed;
           top: 20px;
-          right: 20px;
-          width: 300px;
+          left: 20px;
+          width: 280px;
           background: ${CONFIG.THEME.primary};
           border: 1px solid ${CONFIG.THEME.accent};
           border-radius: 8px;
@@ -1216,10 +1216,10 @@
           overflow: hidden;
         }
         .wplace-header {
-          padding: 12px 15px;
+          padding: 8px 12px;
           background: ${CONFIG.THEME.secondary};
           color: ${CONFIG.THEME.highlight};
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 600;
           display: flex;
           justify-content: space-between;
@@ -1248,17 +1248,28 @@
           opacity: 1;
         }
         .wplace-content {
-          padding: 15px;
+          padding: 12px;
           display: block;
         }
         .wplace-controls {
           display: flex;
           flex-direction: column;
-          gap: 10px;
-          margin-bottom: 15px;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .wplace-controls-row {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .wplace-controls-row .wplace-btn {
+          flex: 1;
+          min-width: 0;
+          padding: 8px 6px;
+          font-size: 12px;
         }
         .wplace-btn {
-          padding: 10px;
+          padding: 8px 10px;
           border: none;
           border-radius: 6px;
           font-weight: 600;
@@ -1266,11 +1277,13 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
+          gap: 6px;
           transition: all 0.2s;
+          font-size: 13px;
         }
         .wplace-btn:hover {
-          transform: translateY(-2px);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
         .wplace-btn-primary {
           background: ${CONFIG.THEME.accent};
@@ -1300,15 +1313,15 @@
         }
         .wplace-stats {
           background: ${CONFIG.THEME.secondary};
-          padding: 12px;
+          padding: 8px;
           border-radius: 6px;
-          margin-bottom: 15px;
+          margin-bottom: 10px;
         }
         .wplace-stat-item {
           display: flex;
           justify-content: space-between;
-          padding: 6px 0;
-          font-size: 14px;
+          padding: 4px 0;
+          font-size: 12px;
         }
         .wplace-stat-label {
           display: flex;
@@ -1320,19 +1333,19 @@
           width: 100%;
           background: ${CONFIG.THEME.secondary};
           border-radius: 4px;
-          margin: 10px 0;
+          margin: 8px 0;
           overflow: hidden;
         }
         .wplace-progress-bar {
-          height: 10px;
+          height: 8px;
           background: ${CONFIG.THEME.highlight};
           transition: width 0.3s;
         }
         .wplace-status {
-          padding: 8px;
+          padding: 6px;
           border-radius: 4px;
           text-align: center;
-          font-size: 13px;
+          font-size: 12px;
         }
         .status-default {
           background: rgba(255,255,255,0.1);
@@ -1434,100 +1447,114 @@
         </div>
         <div class="wplace-content">
           <div class="wplace-controls">
-            <button id="initBotBtn" class="wplace-btn wplace-btn-primary">
-              <i class="fas fa-robot"></i>
-              <span>${Utils.t("initBot")}</span>
-            </button>
-            <button id="uploadBtn" class="wplace-btn wplace-btn-upload" disabled>
-              <i class="fas fa-upload"></i>
-              <span>${Utils.t("uploadImage")}</span>
-            </button>
-            <button id="resizeBtn" class="wplace-btn wplace-btn-primary" disabled>
-              <i class="fas fa-expand"></i>
-              <span>${Utils.t("resizeImage")}</span>
-            </button>
-            <button id="selectPosBtn" class="wplace-btn wplace-btn-select" disabled>
-              <i class="fas fa-crosshairs"></i>
-              <span>${Utils.t("selectPosition")}</span>
-            </button>
-            <button id="startBtn" class="wplace-btn wplace-btn-start" disabled>
-              <i class="fas fa-play"></i>
-              <span>${Utils.t("startPainting")}</span>
-            </button>
-            <button id="stopBtn" class="wplace-btn wplace-btn-stop" disabled>
-              <i class="fas fa-stop"></i>
-              <span>${Utils.t("stopPainting")}</span>
-            </button>
-            <button id="saveBtn" class="wplace-btn wplace-btn-primary" disabled>
-              <i class="fas fa-save"></i>
-              <span>${Utils.t("saveData")}</span>
-            </button>
-            <button id="loadBtn" class="wplace-btn wplace-btn-primary">
-              <i class="fas fa-folder-open"></i>
-              <span>${Utils.t("loadData")}</span>
-            </button>
-            <button id="exportBtn" class="wplace-btn wplace-btn-primary" disabled>
-              <i class="fas fa-download"></i>
-              <span>${Utils.t("exportProgress")}</span>
-            </button>
-            <button id="importBtn" class="wplace-btn wplace-btn-primary">
-              <i class="fas fa-upload"></i>
-              <span>${Utils.t("importProgress")}</span>
-            </button>
-          </div>
+            <div class="wplace-controls-row">
+              <button id="initBotBtn" class="wplace-btn wplace-btn-primary">
+                <i class="fas fa-robot"></i>
+                <span>Init</span>
+              </button>
+              <button id="uploadBtn" class="wplace-btn wplace-btn-upload" disabled>
+                <i class="fas fa-upload"></i>
+                <span>Upload</span>
+              </button>
+            </div>
+            
+            <div class="wplace-controls-row">
+              <button id="resizeBtn" class="wplace-btn wplace-btn-primary" disabled>
+                <i class="fas fa-expand"></i>
+                <span>Resize</span>
+              </button>
+              <button id="selectPosBtn" class="wplace-btn wplace-btn-select" disabled>
+                <i class="fas fa-crosshairs"></i>
+                <span>Position</span>
+              </button>
+            </div>
+            
+            <div class="wplace-controls-row">
+              <button id="startBtn" class="wplace-btn wplace-btn-start" disabled>
+                <i class="fas fa-play"></i>
+                <span>Start</span>
+              </button>
+              <button id="stopBtn" class="wplace-btn wplace-btn-stop" disabled>
+                <i class="fas fa-stop"></i>
+                <span>Stop</span>
+              </button>
+            </div>
+            
+            <div class="wplace-controls-row">
+              <button id="saveBtn" class="wplace-btn wplace-btn-primary" disabled>
+                <i class="fas fa-save"></i>
+                <span>Save</span>
+              </button>
+              <button id="loadBtn" class="wplace-btn wplace-btn-primary">
+                <i class="fas fa-folder-open"></i>
+                <span>Load</span>
+              </button>
+            </div>
+            
+            <div class="wplace-controls-row">
+              <button id="exportBtn" class="wplace-btn wplace-btn-primary" disabled>
+                <i class="fas fa-download"></i>
+                <span>Export</span>
+              </button>
+              <button id="importBtn" class="wplace-btn wplace-btn-primary">
+                <i class="fas fa-upload"></i>
+                <span>Import</span>
+              </button>
+            </div>
+            
+            <div class="wplace-controls-row">
+              <button id="saveSlotBtn" class="wplace-btn wplace-btn-primary" disabled>
+                <i class="fas fa-save"></i>
+                <span>Save Slot</span>
+              </button>
+              <button id="loadSlotBtn" class="wplace-btn wplace-btn-primary">
+                <i class="fas fa-folder-open"></i>
+                <span>Load Slot</span>
+              </button>
+            </div>
+            
+            <div class="wplace-controls-row">
+              <button id="loadSyncBtn" class="wplace-btn wplace-btn-primary">
+                <i class="fas fa-sync"></i>
+                <span>Sync</span>
+              </button>
+            </div>
           
-          <div class="wplace-controls" style="margin-top: 10px;">
-            <button id="saveSlotBtn" class="wplace-btn wplace-btn-primary" disabled>
-              <i class="fas fa-save"></i>
-              <span>${Utils.t("saveSlot")}</span>
-            </button>
-            <button id="loadSlotBtn" class="wplace-btn wplace-btn-primary">
-              <i class="fas fa-folder-open"></i>
-              <span>${Utils.t("loadSlot")}</span>
-            </button>
-            <button id="loadSyncBtn" class="wplace-btn wplace-btn-primary">
-              <i class="fas fa-sync"></i>
-              <span>Load Sync</span>
-            </button>
-          </div>
-          
-                     <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
-             <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
-               <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
-               <i class="fas fa-sync"></i>
-               <span>${Utils.t("autoSync")}</span>
-             </label>
-             <div style="display: flex; align-items: center; gap: 5px;">
-               <span style="color: ${CONFIG.THEME.text}; font-size: 12px;">Slot:</span>
-               <select id="currentSlotSelect" style="background: ${CONFIG.THEME.secondary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 4px; padding: 2px 5px;">
-                 <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
-                 <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
-                 <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
-                 <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
-                 <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
-               </select>
-             </div>
-           </div>
-           
-           <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
-             <label style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text}; cursor: pointer;">
-               <input type="checkbox" id="multiIpSyncCheckbox" ${state.multiIpSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
-               <i class="fas fa-globe"></i>
-               <span style="font-size: 12px;">Multi-IP Sync</span>
-             </label>
-           </div>
-          
-          <div class="wplace-controls" style="padding: 10px; justify-content: space-between; display: flex; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 8px; color: ${CONFIG.THEME.text};">
-              <i class="fas fa-clock"></i>
-              <span style="font-size: 12px;">Sync Interval:</span>
-              <select id="syncIntervalSelect" style="background: ${CONFIG.THEME.secondary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 4px; padding: 2px 5px; font-size: 12px;">
-                <option value="5" ${state.syncInterval === 5 ? 'selected' : ''}>5s (Fast)</option>
-                <option value="10" ${state.syncInterval === 10 ? 'selected' : ''}>10s (Normal)</option>
-                <option value="30" ${state.syncInterval === 30 ? 'selected' : ''}>30s (Slow)</option>
-                <option value="60" ${state.syncInterval === 60 ? 'selected' : ''}>1m (Very Slow)</option>
-                <option value="300" ${state.syncInterval === 300 ? 'selected' : ''}>5m (Manual)</option>
-              </select>
+          <div class="wplace-controls" style="padding: 8px; background: ${CONFIG.THEME.secondary}; border-radius: 6px; margin-top: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <label style="display: flex; align-items: center; gap: 6px; color: ${CONFIG.THEME.text}; cursor: pointer; font-size: 12px;">
+                <input type="checkbox" id="autoSyncCheckbox" ${state.autoSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+                <i class="fas fa-sync"></i>
+                <span>Auto-Sync</span>
+              </label>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="color: ${CONFIG.THEME.text}; font-size: 11px;">Slot:</span>
+                <select id="currentSlotSelect" style="background: ${CONFIG.THEME.primary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 3px; padding: 1px 3px; font-size: 11px;">
+                  <option value="1" ${state.currentSlot === 1 ? 'selected' : ''}>1</option>
+                  <option value="2" ${state.currentSlot === 2 ? 'selected' : ''}>2</option>
+                  <option value="3" ${state.currentSlot === 3 ? 'selected' : ''}>3</option>
+                  <option value="4" ${state.currentSlot === 4 ? 'selected' : ''}>4</option>
+                  <option value="5" ${state.currentSlot === 5 ? 'selected' : ''}>5</option>
+                </select>
+              </div>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <label style="display: flex; align-items: center; gap: 6px; color: ${CONFIG.THEME.text}; cursor: pointer; font-size: 12px;">
+                <input type="checkbox" id="multiIpSyncCheckbox" ${state.multiIpSync ? 'checked' : ''} style="accent-color: ${CONFIG.THEME.highlight};">
+                <i class="fas fa-globe"></i>
+                <span>Multi-IP</span>
+              </label>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="color: ${CONFIG.THEME.text}; font-size: 11px;">Interval:</span>
+                <select id="syncIntervalSelect" style="background: ${CONFIG.THEME.primary}; color: ${CONFIG.THEME.text}; border: 1px solid ${CONFIG.THEME.accent}; border-radius: 3px; padding: 1px 3px; font-size: 11px;">
+                  <option value="5" ${state.syncInterval === 5 ? 'selected' : ''}>5s</option>
+                  <option value="10" ${state.syncInterval === 10 ? 'selected' : ''}>10s</option>
+                  <option value="30" ${state.syncInterval === 30 ? 'selected' : ''}>30s</option>
+                  <option value="60" ${state.syncInterval === 60 ? 'selected' : ''}>1m</option>
+                  <option value="300" ${state.syncInterval === 300 ? 'selected' : ''}>5m</option>
+                </select>
+              </div>
             </div>
           </div>
           
