@@ -2242,11 +2242,22 @@
       });
   
       startBtn.addEventListener("click", async () => {
+        console.log("🚀 Start Button 1 clicked");
+        console.log("📊 Current state:", {
+          imageLoaded: state.imageLoaded,
+          startPosition: state.startPosition,
+          region: state.region,
+          captchaToken: !!capturedCaptchaToken,
+          running: state.running
+        });
+        
         if (!state.imageLoaded || !state.startPosition || !state.region) {
+          console.log("❌ Missing requirements for start");
           updateUI("missingRequirements", "error");
           return;
         }
         if (!capturedCaptchaToken) {
+          console.log("❌ No CAPTCHA token available");
           updateUI("captchaNeeded", "error");
           Utils.showAlert(Utils.t("captchaNeeded"), "error");
           return;
@@ -2267,8 +2278,10 @@
          updateUI("startPaintingMsg", "success");
   
         try {
+          console.log("🎨 Starting image processing...");
           await processImage();
-        } catch {
+        } catch (error) {
+          console.error("❌ Start 1 error:", error);
           updateUI("paintingError", "error");
         } finally {
           state.running = false;
@@ -2805,9 +2818,18 @@
     }
   
     async function processImage() {
+      console.log("🖼️ Starting processImage function");
+      
+      if (!state.imageData || !state.startPosition || !state.region) {
+        console.error("❌ Missing required data for processing");
+        throw new Error("Missing required data for image processing");
+      }
+      
       const { width, height, pixels } = state.imageData;
       const { x: startX, y: startY } = state.startPosition;
       const { x: regionX, y: regionY } = state.region;
+      
+      console.log("📐 Processing with dimensions:", { width, height, startX, startY, regionX, regionY });
   
       let startRow = state.lastPosition.y || 0;
       let startCol = state.lastPosition.x || 0;
